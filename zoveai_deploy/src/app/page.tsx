@@ -26,7 +26,7 @@ interface Destination {
 interface Result { interpretation: string; destinations: Destination[]; }
 interface StructuredForm {
   origin: string; startDate: string; endDate: string; days: string;
-  companions: string; transport: string; budget: string; currency: string; notes: string;
+  companions: string; transport: string; budget: string; notes: string;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -39,7 +39,13 @@ const TRANSPORTS = [
   { value: 'bus', label: '🚌 Bus', desc: 'Bus travel' },
   { value: 'any', label: '🗺 Any', desc: 'Best option' },
 ];
-const CURRENCIES = ['₹ INR', '$ USD', '€ EUR', '£ GBP', '¥ JPY'];
+const BUDGET_TIERS = [
+  { value: 'budget', label: '🎒 Budget', desc: 'Under ₹2,000/day', range: 'under ₹2,000 per person per day' },
+  { value: 'comfortable', label: '💰 Comfortable', desc: '₹2,000–5,000/day', range: '₹2,000–5,000 per person per day' },
+  { value: 'premium', label: '✨ Premium', desc: '₹5,000–12,000/day', range: '₹5,000–12,000 per person per day' },
+  { value: 'luxury', label: '💎 Luxury', desc: '₹12,000–25,000/day', range: '₹12,000–25,000 per person per day' },
+  { value: 'ultraluxury', label: '👑 Ultra Luxury', desc: '₹25,000+/day', range: 'above ₹25,000 per person per day' },
+];
 
 // ── Booking URL builders ───────────────────────────────────────────────────
 function buildBookingUrls(dest: Destination) {
@@ -366,7 +372,7 @@ export default function Home() {
   const [showAuth, setShowAuth] = useState(false);
   const [form, setForm] = useState<StructuredForm>({
     origin: '', startDate: '', endDate: '', days: '',
-    companions: '', transport: '', budget: '', currency: '₹ INR', notes: '',
+    companions: '', transport: '', budget: '', notes: '',
   });
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
@@ -376,7 +382,19 @@ export default function Home() {
   const [step, setStep] = useState<'form' | 'results'>('form');
 
   const updateForm = (key: keyof StructuredForm, value: string) =>
-    setForm(prev => ({ ...prev, [key]: value }));
+    setForm(prev => {
+      const updated = { ...prev, [key]: value };
+      // Auto-calculate days from dates
+      if (key === 'startDate' || key === 'endDate') {
+        const start = key === 'startDate' ? value : prev.startDate;
+        const end = key === 'endDate' ? value : prev.endDate;
+        if (start && end) {
+          const diff = Math.round((new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24));
+          if (diff > 0) updated.days = String(diff);
+        }
+      }
+      return updated;
+    });
 
   const handleSearch = async () => {
     if (!form.origin || loading) return;
@@ -397,8 +415,8 @@ export default function Home() {
             days: form.days,
             companions: form.companions,
             transport: form.transport,
-            budget: form.budget,
-            currency: form.currency.split(' ')[0],
+            budget: BUDGET_TIERS.find(t => t.value === form.budget)?.range || form.budget,
+            currency: '₹',
           }
         }),
       });
@@ -507,25 +525,41 @@ export default function Home() {
                 </InputField>
               </div>
 
-              {/* Row 2: Days + Budget */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px', marginBottom: '20px' }}>
+              {/* Row 2: Days (auto) + Budget tier */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '20px' }}>
                 <InputField label="Number of days">
-                  <input type="number" placeholder="e.g. 4" min="1" max="30" value={form.days} onChange={e => updateForm('days', e.target.value)} style={inputStyle}
+                  <input
+                    type="number" placeholder="Auto-calculated from dates" min="1" max="30"
+                    value={form.days}
+                    onChange={e => updateForm('days', e.target.value)}
+                    style={{ ...inputStyle, background: form.startDate && form.endDate ? 'var(--stone-50)' : '#fff' }}
                     onFocus={e => e.target.style.borderColor = 'var(--sage)'}
                     onBlur={e => e.target.style.borderColor = 'var(--stone-200)'}
                   />
                 </InputField>
-                <InputField label="Budget per person">
-                  <input type="text" placeholder="e.g. 20000" value={form.budget} onChange={e => updateForm('budget', e.target.value)} style={inputStyle}
-                    onFocus={e => e.target.style.borderColor = 'var(--sage)'}
-                    onBlur={e => e.target.style.borderColor = 'var(--stone-200)'}
-                  />
-                </InputField>
-                <InputField label="Currency">
-                  <select value={form.currency} onChange={e => updateForm('currency', e.target.value)} style={{ ...inputStyle, appearance: 'none' }}>
-                    {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </InputField>
+                <div />
+              </div>
+
+              {/* Budget tiers */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--stone-500)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>Budget per person</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '8px' }}>
+                  {BUDGET_TIERS.map(t => (
+                    <button key={t.value} onClick={() => updateForm('budget', form.budget === t.value ? '' : t.value)}
+                      style={{
+                        padding: '10px 6px', borderRadius: 'var(--radius-md)', fontSize: '11px',
+                        border: `1.5px solid ${form.budget === t.value ? 'var(--forest)' : 'var(--stone-200)'}`,
+                        background: form.budget === t.value ? 'var(--forest)' : '#fff',
+                        color: form.budget === t.value ? '#fff' : 'var(--stone-600)',
+                        cursor: 'pointer', fontFamily: 'var(--font-body)', transition: 'all 0.15s',
+                        textAlign: 'center', lineHeight: 1.4,
+                      }}>
+                      <div style={{ fontSize: '16px', marginBottom: '3px' }}>{t.label.split(' ')[0]}</div>
+                      <div style={{ fontWeight: 600, fontSize: '11px' }}>{t.label.split(' ').slice(1).join(' ')}</div>
+                      <div style={{ fontSize: '10px', opacity: 0.8, marginTop: '2px' }}>{t.desc}</div>
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Companions */}
@@ -637,7 +671,7 @@ export default function Home() {
                   form.companions && `👥 ${form.companions}`,
                   form.transport && TRANSPORTS.find(t => t.value === form.transport)?.label,
                   form.days && `${form.days} days`,
-                  form.budget && `${form.currency.split(' ')[0]}${form.budget}`,
+                  form.budget && BUDGET_TIERS.find(t => t.value === form.budget)?.label,
                 ].filter(Boolean).map((tag, i) => (
                   <span key={i} style={{ padding: '4px 11px', background: 'var(--warm-white)', border: '1px solid var(--stone-200)', borderRadius: '99px', fontSize: '12px', color: 'var(--stone-600)' }}>{tag}</span>
                 ))}
