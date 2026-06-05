@@ -17,16 +17,17 @@ interface Destination {
 }
 interface Result { interpretation: string; destinations: Destination[]; }
 
-// ── Travel background images (Unsplash curated) ────────────────────────────
+// ── Reliable travel background images ─────────────────────────────────────
+// Using Unsplash with specific photo IDs that are definitely travel imagery
 const BG_IMAGES = [
-  'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1920&q=80', // mountains
-  'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=1920&q=80', // forest light
-  'https://images.unsplash.com/photo-1501854140801-50d01698950b?w=1920&q=80', // aerial mountains
-  'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=1920&q=80', // lake reflection
-  'https://images.unsplash.com/photo-1682687220742-aba13b6e50ba?w=1920&q=80', // golden desert
-  'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1920&q=80', // tropical beach
-  'https://images.unsplash.com/photo-1518002171953-a080ee817e1f?w=1920&q=80', // snowy peaks
-  'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=1920&q=80', // rocky mountains
+  { url: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1920&q=80&fit=crop', credit: 'Mountains' },
+  { url: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=1920&q=80&fit=crop', credit: 'Forest' },
+  { url: 'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=1920&q=80&fit=crop', credit: 'Lake' },
+  { url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1920&q=80&fit=crop', credit: 'Beach' },
+  { url: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=1920&q=80&fit=crop', credit: 'Peaks' },
+  { url: 'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?w=1920&q=80&fit=crop', credit: 'Road' },
+  { url: 'https://images.unsplash.com/photo-1682687220742-aba13b6e50ba?w=1920&q=80&fit=crop', credit: 'Desert' },
+  { url: 'https://images.unsplash.com/photo-1551632811-561732d1e306?w=1920&q=80&fit=crop', credit: 'Hiking' },
 ];
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -38,7 +39,6 @@ const COMPANIONS = [
   { value: 'With parents', icon: '👴', label: 'Parents', sub: 'Family retreat' },
   { value: 'Group', icon: '👥', label: 'Group', sub: '6+ people' },
 ];
-
 const TRANSPORTS = [
   { value: 'car', icon: '🚗', label: 'Road Trip', sub: 'Self-drive' },
   { value: 'motorcycle', icon: '🏍', label: 'Bike', sub: 'Open roads' },
@@ -47,7 +47,6 @@ const TRANSPORTS = [
   { value: 'bus', icon: '🚌', label: 'Bus', sub: 'Budget travel' },
   { value: 'any', icon: '🗺', label: 'Best way', sub: 'AI decides' },
 ];
-
 const BUDGET_TIERS = [
   { value: 'budget', emoji: '🎒', label: 'Budget', desc: 'Under ₹2K/day' },
   { value: 'comfortable', emoji: '💰', label: 'Comfortable', desc: '₹2–5K/day' },
@@ -55,7 +54,6 @@ const BUDGET_TIERS = [
   { value: 'luxury', emoji: '💎', label: 'Luxury', desc: '₹12–25K/day' },
   { value: 'ultraluxury', emoji: '👑', label: 'Ultra Luxury', desc: '₹25K+/day' },
 ];
-
 const SURPRISE_PROMPTS = [
   { icon: '🏔', text: 'Take me somewhere cold and quiet' },
   { icon: '🌊', text: 'I need to hear the ocean' },
@@ -84,12 +82,12 @@ function buildBookingUrls(dest: Destination) {
 
 // ── ScoreBar ────────────────────────────────────────────────────────────────
 function ScoreBar({ label, score }: { label: string; score: number }) {
-  const color = score >= 8 ? '#7A9E82' : score >= 6 ? '#D4854A' : 'rgba(245,240,232,0.2)';
+  const color = score >= 8 ? '#7A9E82' : score >= 6 ? '#D4854A' : 'rgba(255,255,255,0.25)';
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '7px' }}>
-      <span style={{ fontSize: '11px', color: 'var(--text-dim)', width: '100px', flexShrink: 0, textTransform: 'capitalize' }}>{label.replace('_', ' ')}</span>
-      <div style={{ flex: 1, height: '3px', background: 'rgba(255,255,255,0.06)', borderRadius: '99px', overflow: 'hidden' }}>
-        <div style={{ width: `${score * 10}%`, height: '100%', background: color, borderRadius: '99px', transition: 'width 1s var(--ease)' }} />
+      <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', width: '100px', flexShrink: 0, textTransform: 'capitalize' }}>{label.replace('_', ' ')}</span>
+      <div style={{ flex: 1, height: '3px', background: 'rgba(255,255,255,0.08)', borderRadius: '99px', overflow: 'hidden' }}>
+        <div style={{ width: `${score * 10}%`, height: '100%', background: color, borderRadius: '99px', transition: 'width 1s' }} />
       </div>
       <span style={{ fontSize: '11px', fontWeight: 500, color, width: '18px', textAlign: 'right' }}>{score}</span>
     </div>
@@ -102,108 +100,88 @@ function DestinationCard({ dest, index, isUnlocked, onUnlock }: {
 }) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const seed = dest.name.split('').reduce((a, c) => a + c.charCodeAt(0), index * 137);
-  const imgUrl = `https://picsum.photos/seed/${seed}/900/600`;
+  const imgUrl = `https://picsum.photos/seed/${seed + 500}/900/600`;
   const urls = buildBookingUrls(dest);
   const tfo = dest.travel_from_origin;
 
   return (
-    <div style={{
-      background: 'rgba(255,255,255,0.04)', borderRadius: '20px', overflow: 'hidden',
-      border: '1px solid rgba(255,255,255,0.08)',
-      animation: `scaleIn 0.6s var(--ease) ${index * 0.15}s both`,
-      transition: 'transform 0.3s var(--ease), box-shadow 0.3s ease',
-    }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-4px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 24px 60px rgba(0,0,0,0.5)'; }}
+    <div style={{ background: 'rgba(15,18,16,0.85)', backdropFilter: 'blur(20px)', borderRadius: '20px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)', transition: 'transform 0.3s, box-shadow 0.3s', animation: `scaleIn 0.6s cubic-bezier(0.16,1,0.3,1) ${index * 0.15}s both` }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-4px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 24px 60px rgba(0,0,0,0.6)'; }}
       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
     >
-      <div style={{ position: 'relative', height: '220px', background: 'rgba(255,255,255,0.04)', overflow: 'hidden' }}>
+      <div style={{ position: 'relative', height: '220px', background: 'rgba(255,255,255,0.05)', overflow: 'hidden' }}>
         {!imgLoaded && <div className="skeleton" style={{ position: 'absolute', inset: 0, borderRadius: 0 }} />}
-        <img src={imgUrl} alt={dest.name} onLoad={() => setImgLoaded(true)}
-          style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: imgLoaded ? 1 : 0, transition: 'opacity 0.5s ease' }} />
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(13,15,14,0.92) 0%, rgba(13,15,14,0.15) 55%, transparent 100%)' }} />
-        <div style={{ position: 'absolute', top: '12px', left: '12px', background: 'rgba(13,15,14,0.65)', backdropFilter: 'blur(12px)', borderRadius: '99px', padding: '4px 12px', fontSize: '11px', color: 'var(--text-muted)', border: '1px solid rgba(255,255,255,0.1)' }}>
+        <img src={imgUrl} alt={dest.name} onLoad={() => setImgLoaded(true)} style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: imgLoaded ? 1 : 0, transition: 'opacity 0.5s' }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(13,15,14,0.95) 0%, rgba(13,15,14,0.2) 55%, transparent 100%)' }} />
+        <div style={{ position: 'absolute', top: '12px', left: '12px', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)', borderRadius: '99px', padding: '4px 12px', fontSize: '11px', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.12)' }}>
           {dest.country} · {dest.region}
         </div>
         <div style={{ position: 'absolute', bottom: '16px', left: '18px', right: '18px' }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginBottom: '8px' }}>
             {dest.best_for.slice(0, 3).map((tag, i) => (
-              <span key={i} style={{ padding: '2px 9px', borderRadius: '99px', fontSize: '10px', background: 'rgba(212,133,74,0.2)', color: 'var(--amber-light)', border: '1px solid rgba(212,133,74,0.3)' }}>{tag}</span>
+              <span key={i} style={{ padding: '2px 9px', borderRadius: '99px', fontSize: '10px', background: 'rgba(212,133,74,0.25)', color: '#E8A46A', border: '1px solid rgba(212,133,74,0.35)' }}>{tag}</span>
             ))}
           </div>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '28px', fontWeight: 400, color: '#fff', lineHeight: 1.1 }}>{dest.name}</h2>
-          <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.55)', marginTop: '4px', fontStyle: 'italic' }}>{dest.tagline}</p>
+          <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)', marginTop: '4px', fontStyle: 'italic' }}>{dest.tagline}</p>
         </div>
       </div>
-
       <div style={{ padding: '20px' }}>
-        <p style={{ fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.7, marginBottom: '16px' }}>{dest.why_recommended}</p>
-
+        <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.65)', lineHeight: 1.7, marginBottom: '16px' }}>{dest.why_recommended}</p>
         {tfo && (
-          <div style={{ background: 'rgba(122,158,130,0.08)', borderRadius: '12px', padding: '12px 14px', marginBottom: '16px', border: '1px solid rgba(122,158,130,0.15)' }}>
-            <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--sage)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>From {tfo.origin}</div>
+          <div style={{ background: 'rgba(122,158,130,0.1)', borderRadius: '12px', padding: '12px 14px', marginBottom: '16px', border: '1px solid rgba(122,158,130,0.2)' }}>
+            <div style={{ fontSize: '10px', fontWeight: 700, color: '#7A9E82', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>From {tfo.origin}</div>
             {[{ i: '🚗', t: tfo.by_road }, { i: '🚆', t: tfo.by_train }, { i: '✈', t: tfo.by_flight }]
-              .filter(r => r.t && r.t !== 'N/A' && !r.t.toLowerCase().includes('no direct'))
-              .slice(0, 2).map((r, i) => (
-                <div key={i} style={{ display: 'flex', gap: '8px', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '3px' }}>
-                  <span>{r.i}</span><span>{r.t}</span>
-                </div>
-              ))}
-            {tfo.recommended_reason && <div style={{ marginTop: '7px', fontSize: '12px', color: 'var(--sage)', fontWeight: 500 }}>✓ {tfo.recommended_reason}</div>}
+              .filter(r => r.t && r.t !== 'N/A' && !r.t.toLowerCase().includes('no direct')).slice(0, 2)
+              .map((r, i) => <div key={i} style={{ display: 'flex', gap: '8px', fontSize: '12px', color: 'rgba(255,255,255,0.6)', marginBottom: '3px' }}><span>{r.i}</span><span>{r.t}</span></div>)}
+            {tfo.recommended_reason && <div style={{ marginTop: '7px', fontSize: '12px', color: '#7A9E82', fontWeight: 500 }}>✓ {tfo.recommended_reason}</div>}
           </div>
         )}
-
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '16px' }}>
-          {[
-            { l: 'Best time', v: dest.best_time, i: '🗓' },
-            { l: 'Duration', v: dest.duration_ideal, i: '⏱' },
-            { l: 'Per day', v: dest.estimated_cost.budget_per_day, i: '💰' },
-          ].map((s, i) => (
-            <div key={i} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '10px', border: '1px solid rgba(255,255,255,0.06)' }}>
+          {[{ l: 'Best time', v: dest.best_time, i: '🗓' }, { l: 'Duration', v: dest.duration_ideal, i: '⏱' }, { l: 'Per day', v: dest.estimated_cost.budget_per_day, i: '💰' }].map((s, i) => (
+            <div key={i} style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '10px', padding: '10px', border: '1px solid rgba(255,255,255,0.08)' }}>
               <div style={{ fontSize: '14px', marginBottom: '3px' }}>{s.i}</div>
-              <div style={{ fontSize: '10px', color: 'var(--text-dim)', marginBottom: '2px' }}>{s.l}</div>
-              <div style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text)' }}>{s.v}</div>
+              <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.35)', marginBottom: '2px' }}>{s.l}</div>
+              <div style={{ fontSize: '11px', fontWeight: 500, color: '#F5F0E8' }}>{s.v}</div>
             </div>
           ))}
         </div>
-
         {!isUnlocked ? (
           <div style={{ position: 'relative' }}>
             <div style={{ filter: 'blur(4px)', pointerEvents: 'none', userSelect: 'none', opacity: 0.35 }}>
               {Object.entries(dest.suitability_scores).slice(0, 4).map(([k, v]) => <ScoreBar key={k} label={k} score={v} />)}
-              <div style={{ fontSize: '12px', color: 'var(--amber)', padding: '8px 12px', background: 'rgba(212,133,74,0.08)', borderRadius: '8px', marginTop: '10px' }}>⚠ {dest.reality_check[0]}</div>
+              <div style={{ fontSize: '12px', color: '#D4854A', padding: '8px 12px', background: 'rgba(212,133,74,0.1)', borderRadius: '8px', marginTop: '8px' }}>⚠ {dest.reality_check[0]}</div>
             </div>
             <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
-              <button onClick={onUnlock} style={{ background: 'linear-gradient(135deg, var(--amber), var(--amber-light))', color: '#fff', border: 'none', borderRadius: '12px', padding: '13px 26px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--font-body)', boxShadow: '0 8px 30px rgba(212,133,74,0.3)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button onClick={onUnlock} style={{ background: 'linear-gradient(135deg, #D4854A, #E8A46A)', color: '#fff', border: 'none', borderRadius: '12px', padding: '13px 26px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--font-body)', boxShadow: '0 8px 30px rgba(212,133,74,0.35)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 🔓 Unlock full details — free
               </button>
-              <p style={{ fontSize: '11px', color: 'var(--text-dim)', textAlign: 'center' }}>Suitability · Reality check · Day plan · Booking</p>
+              <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', textAlign: 'center' }}>Suitability · Reality check · Day plan · Booking</p>
             </div>
           </div>
         ) : (
           <div style={{ animation: 'fadeIn 0.5s ease' }}>
             <div style={{ marginBottom: '14px' }}>
-              <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '10px' }}>Suitability</div>
+              <div style={{ fontSize: '10px', fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '10px' }}>Suitability</div>
               {Object.entries(dest.suitability_scores).map(([k, v]) => <ScoreBar key={k} label={k} score={v} />)}
             </div>
             <div style={{ marginBottom: '14px' }}>
-              <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--amber)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>⚠ Reality Check</div>
-              {dest.reality_check.map((w, i) => (
-                <div key={i} style={{ fontSize: '12px', color: 'var(--text-muted)', padding: '8px 12px', background: 'rgba(212,133,74,0.06)', borderRadius: '8px', marginBottom: '5px', borderLeft: '2px solid var(--amber)', lineHeight: 1.5 }}>{w}</div>
-              ))}
+              <div style={{ fontSize: '10px', fontWeight: 700, color: '#D4854A', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>⚠ Reality Check</div>
+              {dest.reality_check.map((w, i) => <div key={i} style={{ fontSize: '12px', color: 'rgba(255,255,255,0.65)', padding: '8px 12px', background: 'rgba(212,133,74,0.07)', borderRadius: '8px', marginBottom: '5px', borderLeft: '2px solid #D4854A', lineHeight: 1.5 }}>{w}</div>)}
             </div>
             <div style={{ marginBottom: '14px' }}>
-              <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Day by Day</div>
+              <div style={{ fontSize: '10px', fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Day by Day</div>
               {dest.day_sketch.map((day, i) => (
                 <div key={i} style={{ display: 'flex', gap: '12px', marginBottom: '10px' }}>
-                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', flexShrink: 0, background: 'linear-gradient(135deg, var(--amber), var(--amber-light))', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 600 }}>{day.day}</div>
-                  <div><div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text)' }}>{day.title}</div><div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{day.highlight}</div></div>
+                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', flexShrink: 0, background: 'linear-gradient(135deg, #D4854A, #E8A46A)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 600 }}>{day.day}</div>
+                  <div><div style={{ fontSize: '12px', fontWeight: 500, color: '#F5F0E8' }}>{day.title}</div><div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>{day.highlight}</div></div>
                 </div>
               ))}
             </div>
-            <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ fontSize: '10px', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '3px' }}>Trip Estimate</div>
-              <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--gold)' }}>{dest.estimated_cost.total_trip_estimate}</div>
-              <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '2px' }}>{dest.estimated_cost.currency_note}</div>
+            <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '3px' }}>Trip Estimate</div>
+              <div style={{ fontSize: '14px', fontWeight: 500, color: '#C9A96E' }}>{dest.estimated_cost.total_trip_estimate}</div>
+              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)', marginTop: '2px' }}>{dest.estimated_cost.currency_note}</div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
               {[
@@ -214,12 +192,12 @@ function DestinationCard({ dest, index, isUnlocked, onUnlock }: {
                 { label: '🎭 Activities', url: urls.activities, sub: `in ${dest.name}`, full: true },
               ].map((link, i) => (
                 <a key={i} href={link.url} target="_blank" rel="noopener noreferrer"
-                  style={{ display: 'block', padding: '9px 12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', textDecoration: 'none', transition: 'all 0.2s', gridColumn: (link as any).full ? 'span 2' : 'span 1' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(212,133,74,0.1)'; e.currentTarget.style.borderColor = 'rgba(212,133,74,0.25)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; }}
+                  style={{ display: 'block', padding: '9px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', textDecoration: 'none', transition: 'all 0.2s', gridColumn: (link as any).full ? 'span 2' : 'span 1' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(212,133,74,0.12)'; e.currentTarget.style.borderColor = 'rgba(212,133,74,0.3)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; }}
                 >
-                  <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--amber-light)' }}>{link.label}</div>
-                  {link.sub && <div style={{ fontSize: '10px', color: 'var(--text-dim)', marginTop: '1px' }}>{link.sub}</div>}
+                  <div style={{ fontSize: '12px', fontWeight: 500, color: '#E8A46A' }}>{link.label}</div>
+                  {link.sub && <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.35)', marginTop: '1px' }}>{link.sub}</div>}
                 </a>
               ))}
             </div>
@@ -232,26 +210,113 @@ function DestinationCard({ dest, index, isUnlocked, onUnlock }: {
 
 // ── Auth Modal ──────────────────────────────────────────────────────────────
 function AuthModal({ onClose }: { onClose: () => void }) {
+  const [tab, setTab] = useState<'google' | 'email' | 'phone'>('google');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const tabStyle = (active: boolean): React.CSSProperties => ({
+    flex: 1, padding: '9px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+    fontFamily: 'var(--font-body)', fontSize: '13px', fontWeight: 500, transition: 'all 0.2s',
+    background: active ? 'rgba(255,255,255,0.1)' : 'transparent',
+    color: active ? '#F5F0E8' : 'rgba(255,255,255,0.4)',
+  });
+
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }} />
-      <div style={{ position: 'relative', zIndex: 1, background: 'rgba(20,22,20,0.95)', borderRadius: '24px', padding: '40px', width: '100%', maxWidth: '400px', border: '1px solid rgba(255,255,255,0.12)', animation: 'scaleIn 0.4s var(--ease)', backdropFilter: 'blur(20px)' }}>
-        <button onClick={onClose} style={{ position: 'absolute', top: '16px', right: '20px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', fontSize: '24px', lineHeight: 1 }}>×</button>
-        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: '36px', fontWeight: 300, color: 'var(--amber)', marginBottom: '8px' }}>✦</div>
-          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '28px', fontWeight: 400, color: 'var(--text)', marginBottom: '10px' }}>Join ZoveAI</h2>
-          <p style={{ fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.6 }}>Free forever. Unlock suitability scores, reality checks, booking links, and save your trips.</p>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(8px)' }} />
+      <div style={{ position: 'relative', zIndex: 1, background: 'rgba(18,22,18,0.97)', backdropFilter: 'blur(24px)', borderRadius: '24px', padding: '36px', width: '100%', maxWidth: '420px', border: '1px solid rgba(255,255,255,0.12)', animation: 'scaleIn 0.4s cubic-bezier(0.16,1,0.3,1)' }}>
+        <button onClick={onClose} style={{ position: 'absolute', top: '16px', right: '20px', background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.3)', fontSize: '24px', lineHeight: 1 }}>×</button>
+
+        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: '32px', color: '#D4854A', marginBottom: '8px' }}>✦</div>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 400, color: '#F5F0E8', marginBottom: '8px' }}>Join ZoveAI</h2>
+          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', lineHeight: 1.6 }}>Free forever. Unlock full destination details, save trips, and get smarter recommendations.</p>
         </div>
-        <button onClick={() => { setLoading(true); signIn('google', { callbackUrl: '/' }); }} disabled={loading}
-          style={{ width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', fontSize: '14px', fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--font-body)', color: 'var(--text)', transition: 'all 0.2s', marginBottom: '10px' }}
-          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-          {loading ? 'Redirecting...' : 'Continue with Google'}
-        </button>
-        <p style={{ textAlign: 'center', fontSize: '11px', color: 'var(--text-dim)', marginTop: '14px' }}>No credit card · No spam · Free forever</p>
+
+        {/* Tab switcher */}
+        <div style={{ display: 'flex', gap: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', padding: '4px', marginBottom: '20px' }}>
+          <button style={tabStyle(tab === 'google')} onClick={() => setTab('google')}>Google</button>
+          <button style={tabStyle(tab === 'email')} onClick={() => setTab('email')}>Email</button>
+          <button style={tabStyle(tab === 'phone')} onClick={() => setTab('phone')}>Phone</button>
+        </div>
+
+        {tab === 'google' && (
+          <button onClick={() => { setLoading(true); signIn('google', { callbackUrl: '/' }); }} disabled={loading}
+            style={{ width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', fontSize: '14px', fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--font-body)', color: '#F5F0E8', transition: 'all 0.2s' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.12)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+            {loading ? 'Redirecting...' : 'Continue with Google'}
+          </button>
+        )}
+
+        {tab === 'email' && (
+          <div>
+            {!sent ? (
+              <>
+                <input type="email" placeholder="your@email.com" value={email} onChange={e => setEmail(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && email && setSent(true)}
+                  style={{ width: '100%', padding: '13px 16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.07)', fontSize: '14px', fontFamily: 'var(--font-body)', color: '#F5F0E8', outline: 'none', marginBottom: '10px' }}
+                  onFocus={e => e.target.style.borderColor = 'rgba(212,133,74,0.5)'}
+                  onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.15)'}
+                />
+                <button onClick={() => email && setSent(true)} disabled={!email}
+                  style={{ width: '100%', padding: '13px', borderRadius: '12px', background: email ? 'linear-gradient(135deg, #D4854A, #E8A46A)' : 'rgba(255,255,255,0.08)', color: '#fff', border: 'none', cursor: email ? 'pointer' : 'not-allowed', fontSize: '14px', fontWeight: 500, fontFamily: 'var(--font-body)' }}>
+                  Send magic link
+                </button>
+              </>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <div style={{ fontSize: '36px', marginBottom: '12px' }}>📧</div>
+                <p style={{ color: '#F5F0E8', fontWeight: 500, marginBottom: '6px' }}>Check your inbox</p>
+                <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>We sent a magic link to <strong style={{ color: '#E8A46A' }}>{email}</strong></p>
+                <button onClick={() => setSent(false)} style={{ marginTop: '16px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: 'rgba(255,255,255,0.4)', fontFamily: 'var(--font-body)' }}>Use a different email</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'phone' && (
+          <div>
+            {!sent ? (
+              <>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                  <div style={{ padding: '13px 14px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.07)', color: '#F5F0E8', fontSize: '14px', whiteSpace: 'nowrap' }}>🇮🇳 +91</div>
+                  <input type="tel" placeholder="98765 43210" value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    style={{ flex: 1, padding: '13px 16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.07)', fontSize: '14px', fontFamily: 'var(--font-body)', color: '#F5F0E8', outline: 'none' }}
+                    onFocus={e => e.target.style.borderColor = 'rgba(212,133,74,0.5)'}
+                    onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.15)'}
+                  />
+                </div>
+                <button onClick={() => phone.length === 10 && setSent(true)} disabled={phone.length !== 10}
+                  style={{ width: '100%', padding: '13px', borderRadius: '12px', background: phone.length === 10 ? 'linear-gradient(135deg, #D4854A, #E8A46A)' : 'rgba(255,255,255,0.08)', color: '#fff', border: 'none', cursor: phone.length === 10 ? 'pointer' : 'not-allowed', fontSize: '14px', fontWeight: 500, fontFamily: 'var(--font-body)' }}>
+                  Send OTP
+                </button>
+                <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', textAlign: 'center', marginTop: '10px' }}>India numbers only for now. International coming soon.</p>
+              </>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '10px 0' }}>
+                <div style={{ fontSize: '36px', marginBottom: '12px' }}>📱</div>
+                <p style={{ color: '#F5F0E8', fontWeight: 500, marginBottom: '6px' }}>Enter OTP</p>
+                <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', marginBottom: '16px' }}>Sent to +91 {phone}</p>
+                <input type="text" placeholder="6-digit OTP" maxLength={6}
+                  style={{ width: '100%', padding: '13px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.07)', fontSize: '20px', fontFamily: 'var(--font-body)', color: '#F5F0E8', outline: 'none', textAlign: 'center', letterSpacing: '8px', marginBottom: '10px' }}
+                  onFocus={e => e.target.style.borderColor = 'rgba(212,133,74,0.5)'}
+                  onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.15)'}
+                />
+                <button style={{ width: '100%', padding: '13px', borderRadius: '12px', background: 'linear-gradient(135deg, #D4854A, #E8A46A)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: 500, fontFamily: 'var(--font-body)' }}>
+                  Verify OTP
+                </button>
+                <button onClick={() => setSent(false)} style={{ marginTop: '12px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: 'rgba(255,255,255,0.4)', fontFamily: 'var(--font-body)' }}>← Change number</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        <p style={{ textAlign: 'center', fontSize: '11px', color: 'rgba(255,255,255,0.25)', marginTop: '18px' }}>No credit card · No spam · Free forever</p>
       </div>
     </div>
   );
@@ -261,28 +326,13 @@ function AuthModal({ onClose }: { onClose: () => void }) {
 function TravelBackground({ currentBg }: { currentBg: number }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 0 }}>
-      {BG_IMAGES.map((src, i) => (
-        <div key={i} style={{
-          position: 'absolute', inset: 0,
-          backgroundImage: `url(${src})`,
-          backgroundSize: 'cover', backgroundPosition: 'center',
-          opacity: i === currentBg ? 1 : 0,
-          transition: 'opacity 1.5s ease',
-        }} />
+      {BG_IMAGES.map((bg, i) => (
+        <div key={i} style={{ position: 'absolute', inset: 0, backgroundImage: `url(${bg.url})`, backgroundSize: 'cover', backgroundPosition: 'center', opacity: i === currentBg ? 1 : 0, transition: 'opacity 2s ease' }} />
       ))}
-      {/* Layered overlays for depth */}
-      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(13,15,14,0.45) 0%, rgba(13,15,14,0.3) 40%, rgba(13,15,14,0.7) 75%, rgba(13,15,14,0.95) 100%)' }} />
-      <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 100% 80% at 50% 100%, rgba(13,15,14,0.8) 0%, transparent 70%)' }} />
-    </div>
-  );
-}
-
-// ── Wizard Step Wrapper ─────────────────────────────────────────────────────
-function WizardStep({ children, visible }: { children: React.ReactNode; visible: boolean }) {
-  if (!visible) return null;
-  return (
-    <div style={{ animation: 'slideUp 0.5s var(--ease)' }}>
-      {children}
+      {/* Strong gradient overlay for text readability */}
+      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.55) 50%, rgba(0,0,0,0.65) 100%)' }} />
+      {/* Vignette */}
+      <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 80% 80% at 50% 50%, transparent 40%, rgba(0,0,0,0.4) 100%)' }} />
     </div>
   );
 }
@@ -292,11 +342,11 @@ export default function Home() {
   const { data: session } = useSession();
   const [showAuth, setShowAuth] = useState(false);
   const [currentBg, setCurrentBg] = useState(0);
-  const [wizardStep, setWizardStep] = useState(0); // 0=origin, 1=dates, 2=companions, 3=transport, 4=budget, 5=notes
+  const [wizardStep, setWizardStep] = useState(0);
   const [pageMode, setPageMode] = useState<'wizard' | 'results'>('wizard');
 
-  // Form values
   const [origin, setOrigin] = useState('');
+  const [locationLoading, setLocationLoading] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [days, setDays] = useState('');
@@ -305,7 +355,6 @@ export default function Home() {
   const [budget, setBudget] = useState('');
   const [notes, setNotes] = useState('');
 
-  // Results
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState('');
@@ -316,7 +365,7 @@ export default function Home() {
 
   // Background rotation
   useEffect(() => {
-    const t = setInterval(() => setCurrentBg(b => (b + 1) % BG_IMAGES.length), 6000);
+    const t = setInterval(() => setCurrentBg(b => (b + 1) % BG_IMAGES.length), 7000);
     return () => clearInterval(t);
   }, []);
 
@@ -337,24 +386,40 @@ export default function Home() {
     }
   }, [session, pendingUnlock]);
 
-  // Focus origin on mount
+  // Auto-detect location
+  const detectLocation = useCallback(() => {
+    setLocationLoading(true);
+    if (!navigator.geolocation) { setLocationLoading(false); return; }
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`);
+          const data = await res.json();
+          const city = data.address?.city || data.address?.town || data.address?.state || 'India';
+          setOrigin(city);
+        } catch { setOrigin('India'); }
+        finally { setLocationLoading(false); }
+      },
+      () => { setLocationLoading(false); }
+    );
+  }, []);
+
+  // Try detect on mount
   useEffect(() => {
-    setTimeout(() => originRef.current?.focus(), 800);
+    detectLocation();
+    setTimeout(() => originRef.current?.focus(), 600);
   }, []);
 
   const handleSearch = useCallback(async (overrideQuery?: string) => {
-    setLoading(true);
-    setError('');
-    setResult(null);
-    setUnlockedCards(new Set());
-    setPageMode('results');
+    setLoading(true); setError(''); setResult(null);
+    setUnlockedCards(new Set()); setPageMode('results');
     try {
       const budgetTier = BUDGET_TIERS.find(t => t.value === budget);
       const res = await fetch('/api/recommend', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          query: overrideQuery || notes || `Find me the perfect trip from ${origin}`,
+          query: overrideQuery || notes || `Find me a perfect trip from ${origin}`,
           structured: { origin: origin || 'India', startDate, endDate, days, companions, transport, budget: budgetTier?.desc || budget, currency: '₹' }
         }),
       });
@@ -370,332 +435,335 @@ export default function Home() {
     else { setPendingUnlock(i); setShowAuth(true); }
   };
 
-  const nextStep = () => setWizardStep(s => Math.min(s + 1, 5));
-  const prevStep = () => setWizardStep(s => Math.max(s - 1, 0));
+  // ── Shared styles ──
+  const overlayCardStyle: React.CSSProperties = {
+    background: 'rgba(0,0,0,0.55)',
+    backdropFilter: 'blur(20px)',
+    WebkitBackdropFilter: 'blur(20px)',
+    borderRadius: '20px',
+    border: '1px solid rgba(255,255,255,0.12)',
+    padding: '32px',
+  };
 
   const labelStyle: React.CSSProperties = {
     fontFamily: 'var(--font-display)',
-    fontSize: 'clamp(28px, 5vw, 48px)',
-    fontWeight: 300,
-    color: 'var(--text)',
-    lineHeight: 1.2,
+    fontSize: 'clamp(30px, 5vw, 52px)',
+    fontWeight: 400,
+    color: '#FFFFFF',
+    lineHeight: 1.15,
     marginBottom: '28px',
     letterSpacing: '-0.01em',
+    textShadow: '0 2px 20px rgba(0,0,0,0.5)',
   };
 
   const inputStyle: React.CSSProperties = {
-    background: 'rgba(255,255,255,0.07)',
-    border: '1px solid rgba(255,255,255,0.15)',
+    background: 'rgba(255,255,255,0.12)',
+    border: '1px solid rgba(255,255,255,0.2)',
     borderRadius: '14px',
     padding: '16px 20px',
     fontSize: '16px',
     fontFamily: 'var(--font-body)',
-    color: 'var(--text)',
+    color: '#FFFFFF',
     outline: 'none',
     transition: 'border-color 0.2s, background 0.2s',
     backdropFilter: 'blur(10px)',
   };
 
   const nextBtnStyle: React.CSSProperties = {
-    background: 'linear-gradient(135deg, var(--amber), var(--amber-light))',
+    background: 'linear-gradient(135deg, #D4854A, #E8A46A)',
     color: '#fff', border: 'none', borderRadius: '12px',
     padding: '14px 28px', fontSize: '14px', fontWeight: 500,
     cursor: 'pointer', fontFamily: 'var(--font-body)',
-    boxShadow: '0 8px 24px rgba(212,133,74,0.25)',
+    boxShadow: '0 8px 24px rgba(212,133,74,0.35)',
     transition: 'all 0.2s',
     display: 'inline-flex', alignItems: 'center', gap: '8px',
   };
 
-  const skipStyle: React.CSSProperties = {
+  const backBtnStyle: React.CSSProperties = {
+    background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(10px)',
+    border: '1px solid rgba(255,255,255,0.15)', borderRadius: '12px',
+    padding: '13px 20px', fontSize: '13px', color: '#fff',
+    cursor: 'pointer', fontFamily: 'var(--font-body)', transition: 'all 0.2s',
+  };
+
+  const skipBtnStyle: React.CSSProperties = {
     background: 'none', border: 'none', cursor: 'pointer',
-    fontSize: '13px', color: 'var(--text-dim)', fontFamily: 'var(--font-body)',
-    padding: '10px 16px', transition: 'color 0.2s',
+    fontSize: '13px', color: 'rgba(255,255,255,0.5)',
+    fontFamily: 'var(--font-body)', padding: '10px 16px', transition: 'color 0.2s',
   };
 
   const optionCardStyle = (selected: boolean): React.CSSProperties => ({
-    padding: '18px 14px', borderRadius: '16px', cursor: 'pointer',
-    border: `1px solid ${selected ? 'rgba(212,133,74,0.5)' : 'rgba(255,255,255,0.1)'}`,
-    background: selected ? 'rgba(212,133,74,0.12)' : 'rgba(255,255,255,0.05)',
-    backdropFilter: 'blur(10px)',
-    color: selected ? 'var(--amber-light)' : 'var(--text-muted)',
+    padding: '20px 14px', borderRadius: '16px', cursor: 'pointer', border: 'none',
+    borderTop: `2px solid ${selected ? '#D4854A' : 'transparent'}`,
+    background: selected ? 'rgba(212,133,74,0.2)' : 'rgba(255,255,255,0.08)',
+    backdropFilter: 'blur(12px)',
+    color: selected ? '#F5F0E8' : 'rgba(255,255,255,0.75)',
     transition: 'all 0.2s', textAlign: 'center' as const,
     fontFamily: 'var(--font-body)',
+    boxShadow: selected ? '0 0 0 1px rgba(212,133,74,0.4)' : 'none',
   });
 
-  // ── RESULTS VIEW ──────────────────────────────────────────────────────────
+  // ── NAV ──
+  const Nav = ({ showBack = false }: { showBack?: boolean }) => (
+    <nav style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 28px', height: '58px' }}>
+      <button onClick={() => { setPageMode('wizard'); setResult(null); setWizardStep(0); }} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'none', border: 'none', cursor: 'pointer' }}>
+        <svg width="24" height="24" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" fill="rgba(122,158,130,0.2)" stroke="rgba(122,158,130,0.4)" strokeWidth="1"/><path d="M9 20 L16 10 L23 20" stroke="#7A9E82" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/><circle cx="16" cy="10" r="1.8" fill="#D4854A"/></svg>
+        <span style={{ fontFamily: 'var(--font-display)', fontSize: '20px', fontWeight: 400, color: '#fff', textShadow: '0 1px 8px rgba(0,0,0,0.5)' }}>ZoveAI</span>
+      </button>
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        {showBack && <button onClick={() => { setPageMode('wizard'); setResult(null); setWizardStep(0); }} style={{ ...backBtnStyle, padding: '7px 14px', fontSize: '12px' }}>← New search</button>}
+        {session ? (
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {session.user?.image && <img src={session.user.image} alt="" style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1.5px solid #7A9E82' }} />}
+            <button onClick={() => signOut()} style={{ ...backBtnStyle, padding: '5px 12px', fontSize: '12px' }}>Sign out</button>
+          </div>
+        ) : (
+          <>
+            <button onClick={() => setShowAuth(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', color: 'rgba(255,255,255,0.7)', fontFamily: 'var(--font-body)', textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>Sign in</button>
+            <button onClick={() => setShowAuth(true)} style={{ ...nextBtnStyle, padding: '8px 18px', fontSize: '13px', boxShadow: '0 4px 16px rgba(212,133,74,0.3)' }}>Get started</button>
+          </>
+        )}
+      </div>
+    </nav>
+  );
+
+  // ── RESULTS ──
   if (pageMode === 'results') return (
     <>
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
       <TravelBackground currentBg={currentBg} />
       <div style={{ position: 'relative', zIndex: 1, minHeight: '100vh' }}>
-        <nav style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 28px', height: '58px', background: 'rgba(13,15,14,0.85)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-          <button onClick={() => { setPageMode('wizard'); setResult(null); setWizardStep(0); }} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'none', border: 'none', cursor: 'pointer' }}>
-            <svg width="24" height="24" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" fill="rgba(122,158,130,0.15)" stroke="rgba(122,158,130,0.35)" strokeWidth="1"/><path d="M9 20 L16 10 L23 20" stroke="var(--sage)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/><circle cx="16" cy="10" r="1.8" fill="var(--amber)"/></svg>
-            <span style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 400, color: 'var(--text)' }}>ZoveAI</span>
-          </button>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <button onClick={() => { setPageMode('wizard'); setResult(null); setWizardStep(0); }} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', padding: '6px 14px', fontSize: '12px', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'var(--font-body)' }}>← New search</button>
-            {session
-              ? session.user?.image && <img src={session.user.image} alt="" style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1.5px solid var(--sage)' }} />
-              : <button onClick={() => setShowAuth(true)} style={{ background: 'linear-gradient(135deg, var(--amber), var(--amber-light))', color: '#fff', border: 'none', borderRadius: '8px', padding: '7px 16px', fontSize: '12px', fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--font-body)' }}>Sign in free</button>
-            }
-          </div>
-        </nav>
-
+        <Nav showBack />
         <div style={{ maxWidth: '1120px', margin: '0 auto', padding: '78px 24px 60px' }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '20px' }}>
             {[origin && `📍 ${origin}`, companions, transport && TRANSPORTS.find(t => t.value === transport)?.label, days && `${days} days`, budget && BUDGET_TIERS.find(t => t.value === budget)?.label].filter(Boolean).map((tag, i) => (
-              <span key={i} style={{ padding: '4px 12px', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '99px', fontSize: '12px', color: 'var(--text-muted)', backdropFilter: 'blur(10px)' }}>{tag}</span>
+              <span key={i} style={{ padding: '4px 12px', background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '99px', fontSize: '12px', color: 'rgba(255,255,255,0.8)' }}>{tag}</span>
             ))}
           </div>
-
           {result?.interpretation && (
-            <div style={{ background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(20px)', borderRadius: '16px', padding: '18px 22px', marginBottom: '24px', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: '14px', animation: 'fadeUp 0.5s ease' }}>
-              <div style={{ width: '34px', height: '34px', borderRadius: '50%', flexShrink: 0, background: 'linear-gradient(135deg, var(--amber), var(--amber-light))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>✦</div>
+            <div style={{ ...overlayCardStyle, marginBottom: '24px', display: 'flex', gap: '14px', animation: 'fadeUp 0.5s ease' }}>
+              <div style={{ width: '34px', height: '34px', borderRadius: '50%', flexShrink: 0, background: 'linear-gradient(135deg, #D4854A, #E8A46A)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>✦</div>
               <div>
-                <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>ZoveAI</div>
-                <p style={{ fontSize: '14px', color: 'var(--text-muted)', lineHeight: 1.7, fontStyle: 'italic' }}>"{result.interpretation}"</p>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>ZoveAI</div>
+                <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.7, fontStyle: 'italic' }}>"{result.interpretation}"</p>
               </div>
             </div>
           )}
-
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '22px' }}>
-            {loading
-              ? [0,1,2].map(i => (
-                <div key={i} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '20px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.07)', animation: `fadeUp 0.5s ease ${i * 0.1}s both` }}>
-                  <div className="skeleton" style={{ height: '220px', borderRadius: 0 }} />
-                  <div style={{ padding: '20px' }}>
-                    {[['50%','12px'], ['100%','11px'], ['75%','11px']].map(([w,h], j) => <div key={j} className="skeleton" style={{ height: h, width: w, marginBottom: '8px' }} />)}
-                    <div className="skeleton" style={{ height: '70px', marginTop: '12px', borderRadius: '12px' }} />
-                  </div>
+            {loading ? [0,1,2].map(i => (
+              <div key={i} style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(20px)', borderRadius: '20px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', animation: `fadeUp 0.5s ease ${i * 0.1}s both` }}>
+                <div className="skeleton" style={{ height: '220px', borderRadius: 0 }} />
+                <div style={{ padding: '20px' }}>
+                  {[['50%','12px'],['100%','11px'],['75%','11px']].map(([w,h],j) => <div key={j} className="skeleton" style={{ height: h, width: w, marginBottom: '8px' }} />)}
+                  <div className="skeleton" style={{ height: '70px', marginTop: '12px', borderRadius: '12px' }} />
                 </div>
-              ))
-              : result?.destinations.map((dest, i) => (
-                <DestinationCard key={i} dest={dest} index={i} isUnlocked={!!session || unlockedCards.has(i)} onUnlock={() => handleUnlock(i)} />
-              ))
-            }
+              </div>
+            )) : result?.destinations.map((dest, i) => (
+              <DestinationCard key={i} dest={dest} index={i} isUnlocked={!!session || unlockedCards.has(i)} onUnlock={() => handleUnlock(i)} />
+            ))}
           </div>
-
-          {error && <div style={{ background: 'rgba(212,133,74,0.08)', borderRadius: '14px', padding: '16px 20px', marginTop: '20px', border: '1px solid rgba(212,133,74,0.2)', color: 'var(--amber-light)', fontSize: '14px' }}>{error}</div>}
+          {error && <div style={{ ...overlayCardStyle, marginTop: '20px', color: '#E8A46A', fontSize: '14px' }}>{error}</div>}
         </div>
       </div>
     </>
   );
 
-  // ── WIZARD VIEW ───────────────────────────────────────────────────────────
+  // ── WIZARD ──
   return (
     <>
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
       <TravelBackground currentBg={currentBg} />
-
-      {/* Nav */}
-      <nav style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 28px', height: '58px', background: 'rgba(13,15,14,0.4)', backdropFilter: 'blur(12px)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <svg width="24" height="24" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" fill="rgba(122,158,130,0.15)" stroke="rgba(122,158,130,0.35)" strokeWidth="1"/><path d="M9 20 L16 10 L23 20" stroke="var(--sage)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/><circle cx="16" cy="10" r="1.8" fill="var(--amber)"/></svg>
-          <span style={{ fontFamily: 'var(--font-display)', fontSize: '20px', fontWeight: 400, color: 'var(--text)' }}>ZoveAI</span>
-        </div>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          {session ? (
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-              {session.user?.image && <img src={session.user.image} alt="" style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1.5px solid var(--sage)' }} />}
-              <button onClick={() => signOut()} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', padding: '5px 12px', fontSize: '12px', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'var(--font-body)' }}>Sign out</button>
-            </div>
-          ) : (
-            <>
-              <button onClick={() => setShowAuth(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', color: 'var(--text-muted)', fontFamily: 'var(--font-body)' }}>Sign in</button>
-              <button onClick={() => setShowAuth(true)} style={{ background: 'linear-gradient(135deg, var(--amber), var(--amber-light))', color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 18px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--font-body)' }}>Get started</button>
-            </>
-          )}
-        </div>
-      </nav>
+      <Nav />
 
       {/* Progress dots */}
-      <div style={{ position: 'fixed', top: '72px', left: '50%', transform: 'translateX(-50%)', zIndex: 100, display: 'flex', gap: '6px' }}>
+      <div style={{ position: 'fixed', top: '68px', left: '50%', transform: 'translateX(-50%)', zIndex: 100, display: 'flex', gap: '6px' }}>
         {[0,1,2,3,4,5].map(i => (
-          <div key={i} style={{ width: i === wizardStep ? '20px' : '6px', height: '6px', borderRadius: '99px', background: i === wizardStep ? 'var(--amber)' : i < wizardStep ? 'rgba(212,133,74,0.4)' : 'rgba(255,255,255,0.2)', transition: 'all 0.3s var(--ease)' }} />
+          <div key={i} style={{ width: i === wizardStep ? '22px' : '6px', height: '6px', borderRadius: '99px', background: i === wizardStep ? '#D4854A' : i < wizardStep ? 'rgba(212,133,74,0.5)' : 'rgba(255,255,255,0.2)', transition: 'all 0.4s cubic-bezier(0.16,1,0.3,1)' }} />
         ))}
       </div>
 
-      {/* Full-screen wizard */}
       <div style={{ position: 'relative', zIndex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 24px 60px' }}>
-        <div style={{ width: '100%', maxWidth: '640px' }}>
+        <div style={{ width: '100%', maxWidth: '620px' }}>
 
-          {/* Step 0 — Origin */}
-          <WizardStep visible={wizardStep === 0}>
-            <div style={{ marginBottom: '16px', animation: 'fadeUp 0.5s var(--ease) 0.2s both' }}>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 12px', borderRadius: '99px', background: 'rgba(122,158,130,0.15)', border: '1px solid rgba(122,158,130,0.25)', fontSize: '11px', fontWeight: 500, color: 'var(--sage)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '20px' }}>
-                ✦ AI-Powered Travel Discovery
+          {/* ── STEP 0: Origin ── */}
+          {wizardStep === 0 && (
+            <div style={{ animation: 'slideUp 0.5s cubic-bezier(0.16,1,0.3,1)' }}>
+              <div style={{ marginBottom: '32px' }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 14px', borderRadius: '99px', background: 'rgba(122,158,130,0.2)', border: '1px solid rgba(122,158,130,0.3)', fontSize: '11px', fontWeight: 500, color: '#7A9E82', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '20px', backdropFilter: 'blur(10px)' }}>
+                  ✦ AI-Powered Travel Discovery
+                </div>
+                <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(46px, 9vw, 80px)', fontWeight: 300, lineHeight: 1.05, color: '#fff', letterSpacing: '-0.02em', marginBottom: '14px', textShadow: '0 4px 30px rgba(0,0,0,0.4)' }}>
+                  Where should<br /><em style={{ color: '#E8A46A', fontStyle: 'italic' }}>you go next?</em>
+                </h1>
+                <p style={{ fontSize: '17px', color: 'rgba(255,255,255,0.75)', lineHeight: 1.7, fontWeight: 300, textShadow: '0 1px 8px rgba(0,0,0,0.4)' }}>
+                  Not a booking site. An AI that knows you<br />and gives <em>honest</em> recommendations.
+                </p>
               </div>
-              <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(44px, 8vw, 76px)', fontWeight: 300, lineHeight: 1.05, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: '12px' }}>
-                Where should<br /><em style={{ color: 'var(--amber)', fontStyle: 'italic' }}>you go next?</em>
-              </h1>
-              <p style={{ fontSize: '16px', color: 'var(--text-muted)', lineHeight: 1.7, fontWeight: 300, marginBottom: '36px' }}>
-                Not a booking site. An AI that knows you<br />and gives <em>honest</em> recommendations.
-              </p>
+
+              <div style={overlayCardStyle}>
+                <p style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '10px' }}>Where are you travelling from?</p>
+                <div style={{ position: 'relative', marginBottom: '16px' }}>
+                  <input
+                    ref={originRef}
+                    type="text" placeholder="Delhi, Mumbai, Bangalore..."
+                    value={origin} onChange={e => setOrigin(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && origin.trim() && setWizardStep(1)}
+                    style={{ ...inputStyle, width: '100%', paddingRight: '50px' }}
+                    onFocus={e => { e.target.style.borderColor = 'rgba(212,133,74,0.6)'; e.target.style.background = 'rgba(255,255,255,0.16)'; }}
+                    onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.2)'; e.target.style.background = 'rgba(255,255,255,0.12)'; }}
+                  />
+                  <button onClick={detectLocation} disabled={locationLoading} title="Detect my location"
+                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', opacity: locationLoading ? 0.5 : 1, transition: 'opacity 0.2s' }}>
+                    {locationLoading ? '⏳' : '📍'}
+                  </button>
+                </div>
+                {origin && <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '12px' }}>📍 Detected: <strong style={{ color: '#E8A46A' }}>{origin}</strong> — <button onClick={() => setOrigin('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', fontSize: '12px', fontFamily: 'var(--font-body)' }}>change</button></p>}
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  <button onClick={() => origin.trim() && setWizardStep(1)} disabled={!origin.trim()} style={{ ...nextBtnStyle, opacity: origin.trim() ? 1 : 0.4 }}>Continue →</button>
+                  <button onClick={() => { setOrigin('India'); setWizardStep(1); }} style={skipBtnStyle}>Skip</button>
+                </div>
+              </div>
+
+              {/* Surprise Me */}
+              <div style={{ marginTop: '28px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '14px' }}>
+                  <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.15)' }} />
+                  <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.08em', textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>or get inspired</span>
+                  <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.15)' }} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px' }}>
+                  {SURPRISE_PROMPTS.map((p, i) => (
+                    <button key={i} onClick={() => { if (!origin) setOrigin('India'); handleSearch(p.text); }}
+                      style={{ padding: '12px 14px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(12px)', color: 'rgba(255,255,255,0.8)', cursor: 'pointer', fontFamily: 'var(--font-body)', transition: 'all 0.2s', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(212,133,74,0.15)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(212,133,74,0.3)'; (e.currentTarget as HTMLElement).style.color = '#fff'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.4)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.12)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.8)'; }}
+                    >
+                      <span style={{ fontSize: '18px', flexShrink: 0 }}>{p.icon}</span>
+                      <span style={{ lineHeight: 1.4 }}>{p.text}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
+          )}
 
-            <div style={{ animation: 'fadeUp 0.5s var(--ease) 0.35s both' }}>
-              <p style={{ ...labelStyle, fontSize: 'clamp(22px, 3.5vw, 32px)' }}>Where are you travelling from?</p>
-              <input
-                ref={originRef}
-                type="text" placeholder="Delhi, Mumbai, Bangalore..."
-                value={origin} onChange={e => setOrigin(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && origin.trim() && nextStep()}
-                style={{ ...inputStyle, width: '100%', marginBottom: '16px' }}
-                onFocus={e => { e.target.style.borderColor = 'rgba(212,133,74,0.5)'; e.target.style.background = 'rgba(255,255,255,0.1)'; }}
-                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.15)'; e.target.style.background = 'rgba(255,255,255,0.07)'; }}
-              />
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '40px' }}>
-                <button onClick={nextStep} disabled={!origin.trim()} style={{ ...nextBtnStyle, opacity: origin.trim() ? 1 : 0.4 }}>
-                  Continue →
-                </button>
-                <button onClick={() => { setOrigin('India'); nextStep(); }} style={skipStyle} onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'} onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-dim)'}>
-                  Skip
-                </button>
+          {/* ── STEP 1: Dates ── */}
+          {wizardStep === 1 && (
+            <div style={{ animation: 'slideUp 0.5s cubic-bezier(0.16,1,0.3,1)', ...overlayCardStyle }}>
+              <p style={labelStyle}>When are you going?</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '12px' }}>
+                {[{ label: 'Start date', val: startDate, set: setStartDate }, { label: 'End date', val: endDate, set: setEndDate }].map((d, i) => (
+                  <div key={i}>
+                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>{d.label}</div>
+                    <input type="date" value={d.val} onChange={e => d.set(e.target.value)}
+                      style={{ ...inputStyle, width: '100%', colorScheme: 'dark' }}
+                      onFocus={e => { e.target.style.borderColor = 'rgba(212,133,74,0.6)'; e.target.style.background = 'rgba(255,255,255,0.16)'; }}
+                      onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.2)'; e.target.style.background = 'rgba(255,255,255,0.12)'; }}
+                    />
+                  </div>
+                ))}
+              </div>
+              {days && <p style={{ fontSize: '14px', color: '#E8A46A', marginBottom: '20px', fontWeight: 500 }}>✦ {days} days</p>}
+              <div style={{ display: 'flex', gap: '10px', marginTop: '24px', flexWrap: 'wrap' }}>
+                <button onClick={() => setWizardStep(0)} style={backBtnStyle}>← Back</button>
+                <button onClick={() => setWizardStep(2)} style={nextBtnStyle}>Continue →</button>
+                <button onClick={() => setWizardStep(2)} style={skipBtnStyle}>Skip</button>
               </div>
             </div>
+          )}
 
-            {/* Surprise Me */}
-            <div style={{ animation: 'fadeUp 0.5s var(--ease) 0.5s both' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px' }}>
-                <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
-                <span style={{ fontSize: '11px', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>or get inspired</span>
-                <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px' }}>
-                {SURPRISE_PROMPTS.map((p, i) => (
-                  <button key={i} onClick={() => { if (!origin) setOrigin('India'); handleSearch(p.text); }}
-                    style={{ padding: '12px 14px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(10px)', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'var(--font-body)', transition: 'all 0.2s', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(212,133,74,0.08)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(212,133,74,0.2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text)'; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.08)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'; }}
-                  >
-                    <span style={{ fontSize: '18px', flexShrink: 0 }}>{p.icon}</span>
-                    <span style={{ lineHeight: 1.4 }}>{p.text}</span>
+          {/* ── STEP 2: Companions ── */}
+          {wizardStep === 2 && (
+            <div style={{ animation: 'slideUp 0.5s cubic-bezier(0.16,1,0.3,1)' }}>
+              <p style={{ ...labelStyle, textShadow: '0 2px 20px rgba(0,0,0,0.6)' }}>Who's coming with you?</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '28px' }}>
+                {COMPANIONS.map(c => (
+                  <button key={c.value} onClick={() => setCompanions(companions === c.value ? '' : c.value)} style={optionCardStyle(companions === c.value)}>
+                    <div style={{ fontSize: '30px', marginBottom: '8px' }}>{c.icon}</div>
+                    <div style={{ fontWeight: 600, fontSize: '13px' }}>{c.label}</div>
+                    <div style={{ fontSize: '11px', opacity: 0.6, marginTop: '3px' }}>{c.sub}</div>
                   </button>
                 ))}
               </div>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <button onClick={() => setWizardStep(1)} style={backBtnStyle}>← Back</button>
+                <button onClick={() => setWizardStep(3)} style={nextBtnStyle}>{companions ? 'Continue →' : 'Skip →'}</button>
+              </div>
             </div>
-          </WizardStep>
+          )}
 
-          {/* Step 1 — Dates */}
-          <WizardStep visible={wizardStep === 1}>
-            <p style={labelStyle}>When are you going?</p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '10px' }}>
-              {[
-                { label: 'Start date', val: startDate, set: setStartDate },
-                { label: 'End date', val: endDate, set: setEndDate },
-              ].map((d, i) => (
-                <div key={i}>
-                  <div style={{ fontSize: '11px', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>{d.label}</div>
-                  <input type="date" value={d.val} onChange={e => d.set(e.target.value)}
-                    style={{ ...inputStyle, width: '100%', colorScheme: 'dark' }}
-                    onFocus={e => { e.target.style.borderColor = 'rgba(212,133,74,0.5)'; e.target.style.background = 'rgba(255,255,255,0.1)'; }}
-                    onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.15)'; e.target.style.background = 'rgba(255,255,255,0.07)'; }}
-                  />
-                </div>
-              ))}
+          {/* ── STEP 3: Transport ── */}
+          {wizardStep === 3 && (
+            <div style={{ animation: 'slideUp 0.5s cubic-bezier(0.16,1,0.3,1)' }}>
+              <p style={{ ...labelStyle, textShadow: '0 2px 20px rgba(0,0,0,0.6)' }}>How do you want to travel?</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '28px' }}>
+                {TRANSPORTS.map(t => (
+                  <button key={t.value} onClick={() => setTransport(transport === t.value ? '' : t.value)} style={optionCardStyle(transport === t.value)}>
+                    <div style={{ fontSize: '30px', marginBottom: '8px' }}>{t.icon}</div>
+                    <div style={{ fontWeight: 600, fontSize: '13px' }}>{t.label}</div>
+                    <div style={{ fontSize: '11px', opacity: 0.6, marginTop: '3px' }}>{t.sub}</div>
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <button onClick={() => setWizardStep(2)} style={backBtnStyle}>← Back</button>
+                <button onClick={() => setWizardStep(4)} style={nextBtnStyle}>{transport ? 'Continue →' : 'Skip →'}</button>
+              </div>
             </div>
-            {days && <p style={{ fontSize: '13px', color: 'var(--amber-light)', marginBottom: '20px' }}>✦ {days} days</p>}
-            <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
-              <button onClick={prevStep} style={{ ...skipStyle, color: 'var(--text-dim)' }}>← Back</button>
-              <button onClick={nextStep} style={nextBtnStyle}>Continue →</button>
-              <button onClick={nextStep} style={skipStyle}>Skip</button>
-            </div>
-          </WizardStep>
+          )}
 
-          {/* Step 2 — Companions */}
-          <WizardStep visible={wizardStep === 2}>
-            <p style={labelStyle}>Who's coming with you?</p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '28px' }}>
-              {COMPANIONS.map(c => (
-                <button key={c.value} onClick={() => setCompanions(companions === c.value ? '' : c.value)}
-                  style={optionCardStyle(companions === c.value)}>
-                  <div style={{ fontSize: '28px', marginBottom: '8px' }}>{c.icon}</div>
-                  <div style={{ fontWeight: 500, fontSize: '13px' }}>{c.label}</div>
-                  <div style={{ fontSize: '11px', opacity: 0.6, marginTop: '3px' }}>{c.sub}</div>
+          {/* ── STEP 4: Budget ── */}
+          {wizardStep === 4 && (
+            <div style={{ animation: 'slideUp 0.5s cubic-bezier(0.16,1,0.3,1)' }}>
+              <p style={{ ...labelStyle, textShadow: '0 2px 20px rgba(0,0,0,0.6)' }}>What's your budget?</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', marginBottom: '28px' }}>
+                {BUDGET_TIERS.map(t => (
+                  <button key={t.value} onClick={() => setBudget(budget === t.value ? '' : t.value)} style={optionCardStyle(budget === t.value)}>
+                    <div style={{ fontSize: '26px', marginBottom: '8px' }}>{t.emoji}</div>
+                    <div style={{ fontWeight: 600, fontSize: '12px' }}>{t.label}</div>
+                    <div style={{ fontSize: '10px', opacity: 0.6, marginTop: '3px' }}>{t.desc}</div>
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <button onClick={() => setWizardStep(3)} style={backBtnStyle}>← Back</button>
+                <button onClick={() => setWizardStep(5)} style={nextBtnStyle}>{budget ? 'Continue →' : 'Skip →'}</button>
+              </div>
+            </div>
+          )}
+
+          {/* ── STEP 5: Notes + Search ── */}
+          {wizardStep === 5 && (
+            <div style={{ animation: 'slideUp 0.5s cubic-bezier(0.16,1,0.3,1)', ...overlayCardStyle }}>
+              <p style={{ ...labelStyle, fontSize: 'clamp(24px, 4vw, 40px)' }}>Anything else we should know?</p>
+              <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.65)', marginBottom: '18px', lineHeight: 1.6 }}>
+                Special needs, places to avoid, vibes you want — or just hit search.
+              </p>
+              <textarea
+                placeholder="e.g. My parents can't trek. Love local food. Avoid crowded tourist spots. Need good roads for the bike..."
+                value={notes} onChange={e => setNotes(e.target.value)} rows={3}
+                style={{ ...inputStyle, width: '100%', resize: 'none', lineHeight: 1.6, marginBottom: '20px' }}
+                onFocus={e => { e.target.style.borderColor = 'rgba(212,133,74,0.6)'; e.target.style.background = 'rgba(255,255,255,0.16)'; }}
+                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.2)'; e.target.style.background = 'rgba(255,255,255,0.12)'; }}
+              />
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '22px' }}>
+                {[origin && `📍 ${origin}`, days && `${days} days`, companions, transport && TRANSPORTS.find(t => t.value === transport)?.label, budget && BUDGET_TIERS.find(t => t.value === budget)?.label].filter(Boolean).map((tag, i) => (
+                  <span key={i} style={{ padding: '4px 12px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '99px', fontSize: '12px', color: 'rgba(255,255,255,0.8)' }}>{tag}</span>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <button onClick={() => setWizardStep(4)} style={backBtnStyle}>← Back</button>
+                <button onClick={() => handleSearch()} style={{ ...nextBtnStyle, padding: '16px 36px', fontSize: '15px', boxShadow: '0 10px 36px rgba(212,133,74,0.35)' }}>
+                  ✦ Find my destinations
                 </button>
-              ))}
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={prevStep} style={skipStyle}>← Back</button>
-              <button onClick={nextStep} style={nextBtnStyle}>{companions ? 'Continue →' : 'Skip →'}</button>
-            </div>
-          </WizardStep>
-
-          {/* Step 3 — Transport */}
-          <WizardStep visible={wizardStep === 3}>
-            <p style={labelStyle}>How do you want to travel?</p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '28px' }}>
-              {TRANSPORTS.map(t => (
-                <button key={t.value} onClick={() => setTransport(transport === t.value ? '' : t.value)}
-                  style={optionCardStyle(transport === t.value)}>
-                  <div style={{ fontSize: '28px', marginBottom: '8px' }}>{t.icon}</div>
-                  <div style={{ fontWeight: 500, fontSize: '13px' }}>{t.label}</div>
-                  <div style={{ fontSize: '11px', opacity: 0.6, marginTop: '3px' }}>{t.sub}</div>
-                </button>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={prevStep} style={skipStyle}>← Back</button>
-              <button onClick={nextStep} style={nextBtnStyle}>{transport ? 'Continue →' : 'Skip →'}</button>
-            </div>
-          </WizardStep>
-
-          {/* Step 4 — Budget */}
-          <WizardStep visible={wizardStep === 4}>
-            <p style={labelStyle}>What's your budget per person?</p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', marginBottom: '28px' }}>
-              {BUDGET_TIERS.map(t => (
-                <button key={t.value} onClick={() => setBudget(budget === t.value ? '' : t.value)}
-                  style={optionCardStyle(budget === t.value)}>
-                  <div style={{ fontSize: '24px', marginBottom: '8px' }}>{t.emoji}</div>
-                  <div style={{ fontWeight: 500, fontSize: '12px' }}>{t.label}</div>
-                  <div style={{ fontSize: '10px', opacity: 0.6, marginTop: '3px' }}>{t.desc}</div>
-                </button>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={prevStep} style={skipStyle}>← Back</button>
-              <button onClick={nextStep} style={nextBtnStyle}>{budget ? 'Continue →' : 'Skip →'}</button>
-            </div>
-          </WizardStep>
-
-          {/* Step 5 — Notes + Search */}
-          <WizardStep visible={wizardStep === 5}>
-            <p style={labelStyle}>Anything else we should know?</p>
-            <p style={{ fontSize: '15px', color: 'var(--text-muted)', marginBottom: '20px', lineHeight: 1.6 }}>
-              Special requirements, vibes you're after, places to avoid — anything helps.
-            </p>
-            <textarea
-              placeholder="e.g. My parents can't trek much. We love local food and quiet places. Avoid Shimla and Manali, we've been there..."
-              value={notes} onChange={e => setNotes(e.target.value)} rows={3}
-              style={{ ...inputStyle, width: '100%', resize: 'none', lineHeight: 1.6, marginBottom: '24px' }}
-              onFocus={e => { e.target.style.borderColor = 'rgba(212,133,74,0.5)'; e.target.style.background = 'rgba(255,255,255,0.1)'; }}
-              onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.15)'; e.target.style.background = 'rgba(255,255,255,0.07)'; }}
-            />
-
-            {/* Summary chips */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '24px' }}>
-              {[origin && `📍 ${origin}`, days && `${days} days`, companions, transport && TRANSPORTS.find(t => t.value === transport)?.label, budget && BUDGET_TIERS.find(t => t.value === budget)?.label].filter(Boolean).map((tag, i) => (
-                <span key={i} style={{ padding: '4px 12px', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '99px', fontSize: '12px', color: 'var(--text-muted)', backdropFilter: 'blur(10px)' }}>{tag}</span>
-              ))}
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-              <button onClick={prevStep} style={skipStyle}>← Back</button>
-              <button onClick={() => handleSearch()} style={{ ...nextBtnStyle, padding: '16px 36px', fontSize: '15px', boxShadow: '0 10px 36px rgba(212,133,74,0.3)' }}>
-                ✦ Find my destinations
-              </button>
-            </div>
-          </WizardStep>
-
+          )}
         </div>
       </div>
 
-      {/* Footer */}
-      <div style={{ position: 'fixed', bottom: '20px', left: '50%', transform: 'translateX(-50%)', zIndex: 10, fontSize: '11px', color: 'var(--text-dim)', textAlign: 'center' }}>
-        <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: 'var(--text-muted)', marginRight: '6px' }}>ZoveAI</span>
-        · Free to use · No booking fees
+      <div style={{ position: 'fixed', bottom: '18px', left: '50%', transform: 'translateX(-50%)', zIndex: 10, fontSize: '11px', color: 'rgba(255,255,255,0.4)', textAlign: 'center', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
+        <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginRight: '6px' }}>ZoveAI</span>· Free to use · No booking fees
       </div>
     </>
   );
