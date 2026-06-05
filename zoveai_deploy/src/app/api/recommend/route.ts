@@ -3,9 +3,9 @@ import { NextResponse } from 'next/server';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { query, profile } = body;
+    const { query, structured } = body;
 
-    if (!query) {
+    if (!query && !structured) {
       return NextResponse.json({ error: 'Query is required' }, { status: 400 });
     }
 
@@ -14,78 +14,88 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'API not configured' }, { status: 500 });
     }
 
-    const profileContext = profile ? `
-User profile:
-- Travel style: ${profile.style || 'not specified'}
-- Travel companions: ${profile.companions || 'not specified'}
-- Budget range: ${profile.budget || 'not specified'}
-- Fitness level: ${profile.fitness || 'not specified'}
-- Transport preference: ${profile.transport || 'not specified'}
-- Places already visited: ${profile.visited?.join(', ') || 'none mentioned'}
-- Places loved: ${profile.loved?.join(', ') || 'none mentioned'}
-- Places disliked: ${profile.disliked?.join(', ') || 'none mentioned'}
-` : '';
+    let structuredContext = '';
+    let bookingContext = { origin: '', startDate: '', endDate: '', days: '' };
 
-    const systemPrompt = `You are ZoveAI — an honest, knowledgeable travel companion. You recommend destinations based on who the traveler actually is. You are NOT a booking engine. You're like a well-traveled friend who gives real advice, including warnings.
+    if (structured) {
+      const { origin, startDate, endDate, days, companions, transport, budget, currency } = structured;
+      bookingContext = { origin, startDate, endDate, days };
+      structuredContext = `
+STRUCTURED TRIP DETAILS:
+- Travelling from: ${origin || 'not specified'}
+- Travel dates: ${startDate ? `${startDate} to ${endDate}` : 'flexible'}
+- Duration: ${days || 'flexible'} days
+- Travelling with: ${companions || 'not specified'}
+- Preferred transport: ${transport || 'any'}
+- Budget: ${budget ? `${currency || 'INR'} ${budget} per person total` : 'not specified'}
 
-Your recommendations are:
-- Specific and honest (not generic tourist brochure copy)
-- Matched to the traveler's actual needs
-- Include real practical warnings (not just positives)
-- Written with warmth and personality
+TRANSPORT RULES:
+- motorcycle/car/road trip: ONLY driveable destinations, give road route, distance in km, driving time
+- train: prioritize train-connected destinations, mention train names and journey time  
+- flight: anywhere, mention nearest airport and flight time
+- any/unspecified: recommend BEST mode per destination
+- NEVER suggest flying to a place reachable by road in under 6 hours
+- Always mention realistic travel time FROM the origin city
+`;
+    }
 
-${profileContext}
+    const systemPrompt = `You are ZoveAI — an honest, deeply knowledgeable travel companion. Specific, practical, honest — like a well-traveled friend, not a tourist brochure.
 
-You MUST respond with a valid JSON object matching this exact schema:
+${structuredContext}
+
+Respond ONLY with this exact JSON:
 {
-  "interpretation": "A 1-2 sentence acknowledgment of what the user is looking for, in a warm conversational tone",
+  "interpretation": "Warm 1-2 sentence acknowledgment",
   "destinations": [
     {
       "name": "Destination Name",
       "country": "Country",
-      "region": "Region/Area",
-      "tagline": "A single evocative sentence about this place",
-      "hero_image_query": "A descriptive search query for an image of this place (e.g. 'Kyoto Japan bamboo forest temples autumn')",
-      "why_recommended": "2-3 sentences explaining specifically why this matches the traveler's query",
+      "region": "State/Region",
+      "tagline": "One evocative sentence",
+      "hero_image_query": "Descriptive image search query",
+      "why_recommended": "2-3 sentences why this matches their request",
       "best_for": ["tag1", "tag2", "tag3"],
+      "travel_from_origin": {
+        "origin": "Origin city",
+        "by_road": "Distance and time e.g. 350km, ~7 hours via NH44",
+        "by_train": "Train option or 'No direct train'",
+        "by_flight": "Flight option or 'No nearby airport'",
+        "recommended_mode": "car/train/flight/motorcycle",
+        "recommended_reason": "Why this mode is best"
+      },
       "estimated_cost": {
-        "budget_per_day": "e.g. $80-120",
-        "currency_note": "e.g. USD is widely accepted"
+        "budget_per_day": "e.g. INR 3000-5000 per person",
+        "total_trip_estimate": "e.g. INR 18000-25000 for 4 days 2 people",
+        "currency_note": "Cash/card situation"
       },
-      "best_time": "e.g. October to March",
-      "duration_ideal": "e.g. 5-7 days",
-      "getting_there": "Brief note on how to get there from a major hub",
+      "best_time": "Months",
+      "duration_ideal": "e.g. 4-5 days",
       "suitability_scores": {
-        "couple": 8,
-        "family": 6,
-        "solo": 9,
-        "elderly_parents": 4,
-        "adventure": 7,
-        "relaxation": 8,
-        "food": 9,
-        "culture": 10
+        "couple": 9, "family": 6, "solo": 8, "elderly_parents": 3,
+        "adventure": 8, "relaxation": 7, "food": 6, "culture": 7
       },
-      "reality_check": [
-        "An honest warning or practical challenge travelers often face",
-        "Another real consideration",
-        "A third practical tip or caution"
-      ],
+      "reality_check": ["Warning 1", "Warning 2", "Tip 3"],
       "day_sketch": [
-        { "day": 1, "title": "Arrival & First Impressions", "highlight": "What to do on day 1" },
-        { "day": 2, "title": "Core Experience", "highlight": "The main reason people come here" },
-        { "day": 3, "title": "Hidden Gems", "highlight": "What most tourists miss" }
+        { "day": 1, "title": "Title", "highlight": "What to do" },
+        { "day": 2, "title": "Title", "highlight": "What to do" },
+        { "day": 3, "title": "Title", "highlight": "What to do" }
       ],
-      "booking_hooks": {
-        "flights_query": "search query for flights e.g. 'flights to Lisbon'",
-        "hotels_query": "search query for hotels e.g. 'hotels in Lisbon Alfama'",
-        "trains_query": "train options if relevant",
-        "activities_query": "things to book in advance"
+      "booking": {
+        "flight_origin": "Origin city",
+        "flight_destination": "Nearest airport city",
+        "train_from": "Origin station",
+        "train_to": "Destination station",
+        "hotel_city": "City for hotel search"
       }
     }
   ]
 }
 
-Return 3 destinations. Make them meaningfully different from each other. Be specific, be honest, be helpful.`;
+Return exactly 3 destinations. Be specific and honest.`;
+
+    const userMessage = structured
+      ? `${structuredContext}\nUser notes: ${query || 'None'}`
+      : query;
 
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -98,7 +108,7 @@ Return 3 destinations. Make them meaningfully different from each other. Be spec
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: query }
+          { role: 'user', content: userMessage }
         ],
         temperature: 0.75,
         max_tokens: 4000,
@@ -106,17 +116,23 @@ Return 3 destinations. Make them meaningfully different from each other. Be spec
     });
 
     const data = await response.json();
-
-    if (data.error) {
-      console.error('Groq API Error:', data.error);
-      return NextResponse.json({ error: data.error.message }, { status: 500 });
-    }
-
-    if (!data.choices?.[0]?.message?.content) {
-      return NextResponse.json({ error: 'No response from AI' }, { status: 500 });
-    }
+    if (data.error) return NextResponse.json({ error: data.error.message }, { status: 500 });
+    if (!data.choices?.[0]?.message?.content) return NextResponse.json({ error: 'No response from AI' }, { status: 500 });
 
     const content = JSON.parse(data.choices[0].message.content);
+
+    if (bookingContext.origin && content.destinations) {
+      content.destinations = content.destinations.map((dest: any) => ({
+        ...dest,
+        bookingContext: {
+          origin: bookingContext.origin,
+          startDate: bookingContext.startDate,
+          endDate: bookingContext.endDate,
+          days: bookingContext.days,
+        }
+      }));
+    }
+
     return NextResponse.json(content);
 
   } catch (error) {
