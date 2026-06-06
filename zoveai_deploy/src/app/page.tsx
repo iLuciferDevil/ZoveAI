@@ -1,8 +1,15 @@
 'use client';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { signIn, signOut, useSession } from 'next-auth/react';
+import { firebaseAuth } from '@/lib/firebase';
+import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
 
 // ── Types ──────────────────────────────────────────────────────────────────
+interface RiskMeter {
+  road_quality: number; medical_access: number; mobile_signal: number;
+  weather_risk: number; solo_female_safety: number; crowd_level: number;
+  overall_risk: number; risk_notes: string;
+}
 interface Destination {
   name: string; country: string; region: string; tagline: string;
   hero_image_query: string; why_recommended: string; best_for: string[];
@@ -10,6 +17,7 @@ interface Destination {
   estimated_cost: { budget_per_day: string; total_trip_estimate: string; currency_note: string };
   best_time: string; duration_ideal: string;
   suitability_scores: Record<string, number>;
+  risk_meter: RiskMeter;
   reality_check: string[];
   day_sketch: { day: number; title: string; highlight: string }[];
   booking: { flight_origin: string; flight_destination: string; train_from: string; train_to: string; hotel_city: string };
@@ -17,17 +25,16 @@ interface Destination {
 }
 interface Result { interpretation: string; destinations: Destination[]; }
 
-// ── Reliable travel background images ─────────────────────────────────────
-// Using Unsplash with specific photo IDs that are definitely travel imagery
+// ── Background images ──────────────────────────────────────────────────────
 const BG_IMAGES = [
-  { url: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1920&q=80&fit=crop', credit: 'Mountains' },
-  { url: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=1920&q=80&fit=crop', credit: 'Forest' },
-  { url: 'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=1920&q=80&fit=crop', credit: 'Lake' },
-  { url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1920&q=80&fit=crop', credit: 'Beach' },
-  { url: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=1920&q=80&fit=crop', credit: 'Peaks' },
-  { url: 'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?w=1920&q=80&fit=crop', credit: 'Road' },
-  { url: 'https://images.unsplash.com/photo-1682687220742-aba13b6e50ba?w=1920&q=80&fit=crop', credit: 'Desert' },
-  { url: 'https://images.unsplash.com/photo-1551632811-561732d1e306?w=1920&q=80&fit=crop', credit: 'Hiking' },
+  'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1920&q=80&fit=crop',
+  'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=1920&q=80&fit=crop',
+  'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=1920&q=80&fit=crop',
+  'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1920&q=80&fit=crop',
+  'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=1920&q=80&fit=crop',
+  'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?w=1920&q=80&fit=crop',
+  'https://images.unsplash.com/photo-1682687220742-aba13b6e50ba?w=1920&q=80&fit=crop',
+  'https://images.unsplash.com/photo-1551632811-561732d1e306?w=1920&q=80&fit=crop',
 ];
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -64,6 +71,30 @@ const SURPRISE_PROMPTS = [
   { icon: '🏍', text: 'Epic roads for a bike trip' },
   { icon: '⭐', text: 'Surprise me completely' },
 ];
+const VIBE_FILTERS = [
+  { value: 'mountains', icon: '🏔', label: 'Mountains' },
+  { value: 'beaches', icon: '🏖', label: 'Beaches' },
+  { value: 'cities', icon: '🏙', label: 'Cities' },
+  { value: 'villages', icon: '🏘', label: 'Villages' },
+  { value: 'hidden gems', icon: '💎', label: 'Hidden Gems' },
+  { value: 'spiritual', icon: '🛕', label: 'Spiritual' },
+  { value: 'adventure', icon: '🧗', label: 'Adventure' },
+  { value: 'food', icon: '🍜', label: 'Food & Culture' },
+  { value: 'nature', icon: '🌿', label: 'Nature' },
+  { value: 'winter', icon: '❄️', label: 'Snow & Winter' },
+];
+
+// ── Risk color helper ───────────────────────────────────────────────────────
+function riskColor(score: number): string {
+  if (score <= 3) return '#4CAF50';
+  if (score <= 6) return '#FF9800';
+  return '#F44336';
+}
+function riskLabel(score: number): string {
+  if (score <= 3) return 'Low Risk';
+  if (score <= 6) return 'Moderate';
+  return 'High Risk';
+}
 
 // ── Booking URLs ────────────────────────────────────────────────────────────
 function buildBookingUrls(dest: Destination) {
@@ -80,7 +111,7 @@ function buildBookingUrls(dest: Destination) {
   };
 }
 
-// ── ScoreBar ────────────────────────────────────────────────────────────────
+// ── Score bar ───────────────────────────────────────────────────────────────
 function ScoreBar({ label, score }: { label: string; score: number }) {
   const color = score >= 8 ? '#7A9E82' : score >= 6 ? '#D4854A' : 'rgba(255,255,255,0.25)';
   return (
@@ -94,25 +125,96 @@ function ScoreBar({ label, score }: { label: string; score: number }) {
   );
 }
 
+// ── Risk Meter Component ────────────────────────────────────────────────────
+function RiskMeterDisplay({ risk }: { risk: RiskMeter }) {
+  const overall = risk.overall_risk;
+  const color = riskColor(overall);
+  const label = riskLabel(overall);
+  const riskItems = [
+    { key: 'road_quality', label: 'Road Quality', invert: true },
+    { key: 'medical_access', label: 'Medical Access', invert: true },
+    { key: 'mobile_signal', label: 'Mobile Signal', invert: true },
+    { key: 'weather_risk', label: 'Weather Risk', invert: false },
+    { key: 'solo_female_safety', label: 'Solo Female Safety', invert: true },
+    { key: 'crowd_level', label: 'Crowd Level', invert: false },
+  ];
+
+  return (
+    <div style={{ marginBottom: '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+        <div style={{ fontSize: '10px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Risk Meter</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: color, boxShadow: `0 0 6px ${color}` }} />
+          <span style={{ fontSize: '12px', fontWeight: 600, color }}>{label}</span>
+          <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)' }}>({overall}/10)</span>
+        </div>
+      </div>
+
+      {/* Overall risk bar */}
+      <div style={{ marginBottom: '12px' }}>
+        <div style={{ height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '99px', overflow: 'hidden' }}>
+          <div style={{ width: `${overall * 10}%`, height: '100%', background: `linear-gradient(90deg, #4CAF50, ${color})`, borderRadius: '99px', transition: 'width 1s' }} />
+        </div>
+      </div>
+
+      {/* Individual risk scores */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '10px' }}>
+        {riskItems.map(item => {
+          const rawScore = (risk as any)[item.key] as number;
+          const displayScore = item.invert ? 11 - rawScore : rawScore;
+          const itemColor = riskColor(item.invert ? rawScore : rawScore);
+          return (
+            <div key={item.key} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '8px 10px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', marginBottom: '4px' }}>{item.label}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ flex: 1, height: '3px', background: 'rgba(255,255,255,0.08)', borderRadius: '99px', overflow: 'hidden' }}>
+                  <div style={{ width: `${displayScore * 10}%`, height: '100%', background: itemColor, borderRadius: '99px' }} />
+                </div>
+                <span style={{ fontSize: '10px', color: itemColor, fontWeight: 600, width: '24px', textAlign: 'right' }}>
+                  {item.invert ? (rawScore <= 3 ? '✓' : rawScore <= 6 ? '~' : '!') : (rawScore <= 3 ? '✓' : rawScore <= 6 ? '~' : '!')}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {risk.risk_notes && (
+        <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.55)', padding: '8px 12px', background: `rgba(${overall > 6 ? '244,67,54' : overall > 3 ? '255,152,0' : '76,175,80'},0.08)`, borderRadius: '8px', borderLeft: `2px solid ${color}`, lineHeight: 1.5 }}>
+          {risk.risk_notes}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Destination Card ────────────────────────────────────────────────────────
 function DestinationCard({ dest, index, isUnlocked, onUnlock }: {
   dest: Destination; index: number; isUnlocked: boolean; onUnlock: () => void;
 }) {
   const [imgLoaded, setImgLoaded] = useState(false);
-  const seed = dest.name.split('').reduce((a, c) => a + c.charCodeAt(0), index * 137);
-  const imgUrl = `https://picsum.photos/seed/${seed + 500}/900/600`;
+  const seed = dest.name.split('').reduce((a, c) => a + c.charCodeAt(0), index * 137 + 500);
+  const imgUrl = `https://picsum.photos/seed/${seed}/900/600`;
   const urls = buildBookingUrls(dest);
   const tfo = dest.travel_from_origin;
+  const overall = dest.risk_meter?.overall_risk || 5;
+  const rColor = riskColor(overall);
 
   return (
-    <div style={{ background: 'rgba(15,18,16,0.85)', backdropFilter: 'blur(20px)', borderRadius: '20px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)', transition: 'transform 0.3s, box-shadow 0.3s', animation: `scaleIn 0.6s cubic-bezier(0.16,1,0.3,1) ${index * 0.15}s both` }}
+    <div style={{ background: 'rgba(15,18,16,0.88)', backdropFilter: 'blur(20px)', borderRadius: '20px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)', transition: 'transform 0.3s, box-shadow 0.3s', animation: `scaleIn 0.6s cubic-bezier(0.16,1,0.3,1) ${(index % 3) * 0.15}s both` }}
       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-4px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 24px 60px rgba(0,0,0,0.6)'; }}
       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
     >
+      {/* Hero */}
       <div style={{ position: 'relative', height: '220px', background: 'rgba(255,255,255,0.05)', overflow: 'hidden' }}>
         {!imgLoaded && <div className="skeleton" style={{ position: 'absolute', inset: 0, borderRadius: 0 }} />}
         <img src={imgUrl} alt={dest.name} onLoad={() => setImgLoaded(true)} style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: imgLoaded ? 1 : 0, transition: 'opacity 0.5s' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(13,15,14,0.95) 0%, rgba(13,15,14,0.2) 55%, transparent 100%)' }} />
+        {/* Risk badge on hero */}
+        <div style={{ position: 'absolute', top: '12px', right: '12px', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(12px)', borderRadius: '99px', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '5px', border: `1px solid ${rColor}40` }}>
+          <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: rColor, boxShadow: `0 0 4px ${rColor}` }} />
+          <span style={{ fontSize: '10px', fontWeight: 600, color: rColor }}>{riskLabel(overall)}</span>
+        </div>
         <div style={{ position: 'absolute', top: '12px', left: '12px', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)', borderRadius: '99px', padding: '4px 12px', fontSize: '11px', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.12)' }}>
           {dest.country} · {dest.region}
         </div>
@@ -126,17 +228,20 @@ function DestinationCard({ dest, index, isUnlocked, onUnlock }: {
           <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)', marginTop: '4px', fontStyle: 'italic' }}>{dest.tagline}</p>
         </div>
       </div>
+
       <div style={{ padding: '20px' }}>
         <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.65)', lineHeight: 1.7, marginBottom: '16px' }}>{dest.why_recommended}</p>
+
         {tfo && (
           <div style={{ background: 'rgba(122,158,130,0.1)', borderRadius: '12px', padding: '12px 14px', marginBottom: '16px', border: '1px solid rgba(122,158,130,0.2)' }}>
             <div style={{ fontSize: '10px', fontWeight: 700, color: '#7A9E82', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>From {tfo.origin}</div>
             {[{ i: '🚗', t: tfo.by_road }, { i: '🚆', t: tfo.by_train }, { i: '✈', t: tfo.by_flight }]
-              .filter(r => r.t && r.t !== 'N/A' && !r.t.toLowerCase().includes('no direct')).slice(0, 2)
-              .map((r, i) => <div key={i} style={{ display: 'flex', gap: '8px', fontSize: '12px', color: 'rgba(255,255,255,0.6)', marginBottom: '3px' }}><span>{r.i}</span><span>{r.t}</span></div>)}
+              .filter(r => r.t && r.t !== 'N/A' && !r.t.toLowerCase().includes('no direct') && !r.t.toLowerCase().includes('no nearby'))
+              .slice(0, 2).map((r, i) => <div key={i} style={{ display: 'flex', gap: '8px', fontSize: '12px', color: 'rgba(255,255,255,0.6)', marginBottom: '3px' }}><span>{r.i}</span><span>{r.t}</span></div>)}
             {tfo.recommended_reason && <div style={{ marginTop: '7px', fontSize: '12px', color: '#7A9E82', fontWeight: 500 }}>✓ {tfo.recommended_reason}</div>}
           </div>
         )}
+
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '16px' }}>
           {[{ l: 'Best time', v: dest.best_time, i: '🗓' }, { l: 'Duration', v: dest.duration_ideal, i: '⏱' }, { l: 'Per day', v: dest.estimated_cost.budget_per_day, i: '💰' }].map((s, i) => (
             <div key={i} style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '10px', padding: '10px', border: '1px solid rgba(255,255,255,0.08)' }}>
@@ -146,21 +251,23 @@ function DestinationCard({ dest, index, isUnlocked, onUnlock }: {
             </div>
           ))}
         </div>
+
         {!isUnlocked ? (
           <div style={{ position: 'relative' }}>
             <div style={{ filter: 'blur(4px)', pointerEvents: 'none', userSelect: 'none', opacity: 0.35 }}>
-              {Object.entries(dest.suitability_scores).slice(0, 4).map(([k, v]) => <ScoreBar key={k} label={k} score={v} />)}
-              <div style={{ fontSize: '12px', color: '#D4854A', padding: '8px 12px', background: 'rgba(212,133,74,0.1)', borderRadius: '8px', marginTop: '8px' }}>⚠ {dest.reality_check[0]}</div>
+              {dest.risk_meter && <RiskMeterDisplay risk={dest.risk_meter} />}
+              {Object.entries(dest.suitability_scores).slice(0, 3).map(([k, v]) => <ScoreBar key={k} label={k} score={v} />)}
             </div>
             <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
               <button onClick={onUnlock} style={{ background: 'linear-gradient(135deg, #D4854A, #E8A46A)', color: '#fff', border: 'none', borderRadius: '12px', padding: '13px 26px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--font-body)', boxShadow: '0 8px 30px rgba(212,133,74,0.35)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 🔓 Unlock full details — free
               </button>
-              <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', textAlign: 'center' }}>Suitability · Reality check · Day plan · Booking</p>
+              <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', textAlign: 'center' }}>Risk meter · Suitability · Reality check · Booking</p>
             </div>
           </div>
         ) : (
           <div style={{ animation: 'fadeIn 0.5s ease' }}>
+            {dest.risk_meter && <RiskMeterDisplay risk={dest.risk_meter} />}
             <div style={{ marginBottom: '14px' }}>
               <div style={{ fontSize: '10px', fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '10px' }}>Suitability</div>
               {Object.entries(dest.suitability_scores).map(([k, v]) => <ScoreBar key={k} label={k} score={v} />)}
@@ -208,13 +315,17 @@ function DestinationCard({ dest, index, isUnlocked, onUnlock }: {
   );
 }
 
-// ── Auth Modal ──────────────────────────────────────────────────────────────
+// ── Auth Modal with Firebase Phone OTP ─────────────────────────────────────
 function AuthModal({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<'google' | 'email' | 'phone'>('google');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [confirmResult, setConfirmResult] = useState<ConfirmationResult | null>(null);
+  const [error, setError] = useState('');
+  const recaptchaRef = useRef<HTMLDivElement>(null);
 
   const tabStyle = (active: boolean): React.CSSProperties => ({
     flex: 1, padding: '9px', borderRadius: '8px', border: 'none', cursor: 'pointer',
@@ -223,19 +334,44 @@ function AuthModal({ onClose }: { onClose: () => void }) {
     color: active ? '#F5F0E8' : 'rgba(255,255,255,0.4)',
   });
 
+  const sendOTP = async () => {
+    if (phone.length !== 10) return;
+    setLoading(true); setError('');
+    try {
+      if (!(window as any).recaptchaVerifier) {
+        (window as any).recaptchaVerifier = new RecaptchaVerifier(firebaseAuth, 'recaptcha-container', { size: 'invisible' });
+      }
+      const result = await signInWithPhoneNumber(firebaseAuth, `+91${phone}`, (window as any).recaptchaVerifier);
+      setConfirmResult(result);
+      setSent(true);
+    } catch (e: any) {
+      setError(e.message || 'Failed to send OTP. Try again.');
+    } finally { setLoading(false); }
+  };
+
+  const verifyOTP = async () => {
+    if (!confirmResult || otp.length !== 6) return;
+    setLoading(true); setError('');
+    try {
+      await confirmResult.confirm(otp);
+      onClose();
+    } catch (e: any) {
+      setError('Invalid OTP. Please try again.');
+    } finally { setLoading(false); }
+  };
+
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+      <div id="recaptcha-container" ref={recaptchaRef} />
       <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(8px)' }} />
       <div style={{ position: 'relative', zIndex: 1, background: 'rgba(18,22,18,0.97)', backdropFilter: 'blur(24px)', borderRadius: '24px', padding: '36px', width: '100%', maxWidth: '420px', border: '1px solid rgba(255,255,255,0.12)', animation: 'scaleIn 0.4s cubic-bezier(0.16,1,0.3,1)' }}>
         <button onClick={onClose} style={{ position: 'absolute', top: '16px', right: '20px', background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.3)', fontSize: '24px', lineHeight: 1 }}>×</button>
-
         <div style={{ textAlign: 'center', marginBottom: '24px' }}>
           <div style={{ fontFamily: 'var(--font-display)', fontSize: '32px', color: '#D4854A', marginBottom: '8px' }}>✦</div>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 400, color: '#F5F0E8', marginBottom: '8px' }}>Join ZoveAI</h2>
-          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', lineHeight: 1.6 }}>Free forever. Unlock full destination details, save trips, and get smarter recommendations.</p>
+          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', lineHeight: 1.6 }}>Free forever. Unlock full details, save trips, and get smarter recommendations.</p>
         </div>
 
-        {/* Tab switcher */}
         <div style={{ display: 'flex', gap: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', padding: '4px', marginBottom: '20px' }}>
           <button style={tabStyle(tab === 'google')} onClick={() => setTab('google')}>Google</button>
           <button style={tabStyle(tab === 'email')} onClick={() => setTab('email')}>Email</button>
@@ -258,7 +394,6 @@ function AuthModal({ onClose }: { onClose: () => void }) {
             {!sent ? (
               <>
                 <input type="email" placeholder="your@email.com" value={email} onChange={e => setEmail(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && email && setSent(true)}
                   style={{ width: '100%', padding: '13px 16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.07)', fontSize: '14px', fontFamily: 'var(--font-body)', color: '#F5F0E8', outline: 'none', marginBottom: '10px' }}
                   onFocus={e => e.target.style.borderColor = 'rgba(212,133,74,0.5)'}
                   onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.15)'}
@@ -272,8 +407,8 @@ function AuthModal({ onClose }: { onClose: () => void }) {
               <div style={{ textAlign: 'center', padding: '20px 0' }}>
                 <div style={{ fontSize: '36px', marginBottom: '12px' }}>📧</div>
                 <p style={{ color: '#F5F0E8', fontWeight: 500, marginBottom: '6px' }}>Check your inbox</p>
-                <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>We sent a magic link to <strong style={{ color: '#E8A46A' }}>{email}</strong></p>
-                <button onClick={() => setSent(false)} style={{ marginTop: '16px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: 'rgba(255,255,255,0.4)', fontFamily: 'var(--font-body)' }}>Use a different email</button>
+                <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>Magic link sent to <strong style={{ color: '#E8A46A' }}>{email}</strong></p>
+                <button onClick={() => setSent(false)} style={{ marginTop: '16px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: 'rgba(255,255,255,0.4)', fontFamily: 'var(--font-body)' }}>Use different email</button>
               </div>
             )}
           </div>
@@ -281,6 +416,7 @@ function AuthModal({ onClose }: { onClose: () => void }) {
 
         {tab === 'phone' && (
           <div>
+            {error && <div style={{ fontSize: '12px', color: '#F44336', marginBottom: '10px', padding: '8px 12px', background: 'rgba(244,67,54,0.1)', borderRadius: '8px' }}>{error}</div>}
             {!sent ? (
               <>
                 <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
@@ -291,47 +427,47 @@ function AuthModal({ onClose }: { onClose: () => void }) {
                     onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.15)'}
                   />
                 </div>
-                <button onClick={() => phone.length === 10 && setSent(true)} disabled={phone.length !== 10}
-                  style={{ width: '100%', padding: '13px', borderRadius: '12px', background: phone.length === 10 ? 'linear-gradient(135deg, #D4854A, #E8A46A)' : 'rgba(255,255,255,0.08)', color: '#fff', border: 'none', cursor: phone.length === 10 ? 'pointer' : 'not-allowed', fontSize: '14px', fontWeight: 500, fontFamily: 'var(--font-body)' }}>
-                  Send OTP
+                <button onClick={sendOTP} disabled={phone.length !== 10 || loading}
+                  style={{ width: '100%', padding: '13px', borderRadius: '12px', background: phone.length === 10 && !loading ? 'linear-gradient(135deg, #D4854A, #E8A46A)' : 'rgba(255,255,255,0.08)', color: '#fff', border: 'none', cursor: phone.length === 10 && !loading ? 'pointer' : 'not-allowed', fontSize: '14px', fontWeight: 500, fontFamily: 'var(--font-body)' }}>
+                  {loading ? 'Sending...' : 'Send OTP'}
                 </button>
-                <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', textAlign: 'center', marginTop: '10px' }}>India numbers only for now. International coming soon.</p>
+                <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', textAlign: 'center', marginTop: '10px' }}>India numbers only · 10 SMS/day limit on free tier</p>
               </>
             ) : (
-              <div style={{ textAlign: 'center', padding: '10px 0' }}>
-                <div style={{ fontSize: '36px', marginBottom: '12px' }}>📱</div>
-                <p style={{ color: '#F5F0E8', fontWeight: 500, marginBottom: '6px' }}>Enter OTP</p>
-                <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', marginBottom: '16px' }}>Sent to +91 {phone}</p>
-                <input type="text" placeholder="6-digit OTP" maxLength={6}
-                  style={{ width: '100%', padding: '13px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.07)', fontSize: '20px', fontFamily: 'var(--font-body)', color: '#F5F0E8', outline: 'none', textAlign: 'center', letterSpacing: '8px', marginBottom: '10px' }}
+              <div>
+                <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                  <div style={{ fontSize: '32px', marginBottom: '8px' }}>📱</div>
+                  <p style={{ color: '#F5F0E8', fontWeight: 500, marginBottom: '4px' }}>Enter OTP</p>
+                  <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>Sent to +91 {phone}</p>
+                </div>
+                <input type="text" placeholder="• • • • • •" maxLength={6} value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  style={{ width: '100%', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.07)', fontSize: '24px', fontFamily: 'monospace', color: '#F5F0E8', outline: 'none', textAlign: 'center', letterSpacing: '12px', marginBottom: '10px' }}
                   onFocus={e => e.target.style.borderColor = 'rgba(212,133,74,0.5)'}
                   onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.15)'}
                 />
-                <button style={{ width: '100%', padding: '13px', borderRadius: '12px', background: 'linear-gradient(135deg, #D4854A, #E8A46A)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: 500, fontFamily: 'var(--font-body)' }}>
-                  Verify OTP
+                <button onClick={verifyOTP} disabled={otp.length !== 6 || loading}
+                  style={{ width: '100%', padding: '13px', borderRadius: '12px', background: otp.length === 6 ? 'linear-gradient(135deg, #D4854A, #E8A46A)' : 'rgba(255,255,255,0.08)', color: '#fff', border: 'none', cursor: otp.length === 6 ? 'pointer' : 'not-allowed', fontSize: '14px', fontWeight: 500, fontFamily: 'var(--font-body)', marginBottom: '8px' }}>
+                  {loading ? 'Verifying...' : 'Verify OTP'}
                 </button>
-                <button onClick={() => setSent(false)} style={{ marginTop: '12px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: 'rgba(255,255,255,0.4)', fontFamily: 'var(--font-body)' }}>← Change number</button>
+                <button onClick={() => { setSent(false); setOtp(''); setError(''); }} style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: 'rgba(255,255,255,0.4)', fontFamily: 'var(--font-body)', padding: '6px' }}>← Change number</button>
               </div>
             )}
           </div>
         )}
-
         <p style={{ textAlign: 'center', fontSize: '11px', color: 'rgba(255,255,255,0.25)', marginTop: '18px' }}>No credit card · No spam · Free forever</p>
       </div>
     </div>
   );
 }
 
-// ── Background Slideshow ────────────────────────────────────────────────────
+// ── Background ──────────────────────────────────────────────────────────────
 function TravelBackground({ currentBg }: { currentBg: number }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 0 }}>
-      {BG_IMAGES.map((bg, i) => (
-        <div key={i} style={{ position: 'absolute', inset: 0, backgroundImage: `url(${bg.url})`, backgroundSize: 'cover', backgroundPosition: 'center', opacity: i === currentBg ? 1 : 0, transition: 'opacity 2s ease' }} />
+      {BG_IMAGES.map((url, i) => (
+        <div key={i} style={{ position: 'absolute', inset: 0, backgroundImage: `url(${url})`, backgroundSize: 'cover', backgroundPosition: 'center', opacity: i === currentBg ? 1 : 0, transition: 'opacity 2s ease' }} />
       ))}
-      {/* Strong gradient overlay for text readability */}
       <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.55) 50%, rgba(0,0,0,0.65) 100%)' }} />
-      {/* Vignette */}
       <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 80% 80% at 50% 50%, transparent 40%, rgba(0,0,0,0.4) 100%)' }} />
     </div>
   );
@@ -356,20 +492,23 @@ export default function Home() {
   const [notes, setNotes] = useState('');
 
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<Result | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [allDestinations, setAllDestinations] = useState<Destination[]>([]);
+  const [interpretation, setInterpretation] = useState('');
   const [error, setError] = useState('');
   const [unlockedCards, setUnlockedCards] = useState<Set<number>>(new Set());
   const [pendingUnlock, setPendingUnlock] = useState<number | null>(null);
+  const [showVibeFilters, setShowVibeFilters] = useState(false);
+  const [selectedVibes, setSelectedVibes] = useState<string[]>([]);
+  const [searchParams, setSearchParams] = useState<any>(null);
 
   const originRef = useRef<HTMLInputElement>(null);
 
-  // Background rotation
   useEffect(() => {
     const t = setInterval(() => setCurrentBg(b => (b + 1) % BG_IMAGES.length), 7000);
     return () => clearInterval(t);
   }, []);
 
-  // Auto-calculate days
   useEffect(() => {
     if (startDate && endDate) {
       const diff = Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000);
@@ -377,7 +516,6 @@ export default function Home() {
     }
   }, [startDate, endDate]);
 
-  // Auth unlock
   useEffect(() => {
     if (session && pendingUnlock !== null) {
       setUnlockedCards(prev => new Set([...prev, pendingUnlock]));
@@ -386,7 +524,6 @@ export default function Home() {
     }
   }, [session, pendingUnlock]);
 
-  // Auto-detect location
   const detectLocation = useCallback(() => {
     setLocationLoading(true);
     if (!navigator.geolocation) { setLocationLoading(false); return; }
@@ -395,132 +532,104 @@ export default function Home() {
         try {
           const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`);
           const data = await res.json();
-          const city = data.address?.city || data.address?.town || data.address?.state || 'India';
-          setOrigin(city);
+          setOrigin(data.address?.city || data.address?.town || data.address?.state || 'India');
         } catch { setOrigin('India'); }
         finally { setLocationLoading(false); }
       },
-      () => { setLocationLoading(false); }
+      () => setLocationLoading(false)
     );
   }, []);
 
-  // Try detect on mount
   useEffect(() => {
     detectLocation();
     setTimeout(() => originRef.current?.focus(), 600);
   }, []);
 
+  const buildSearchParams = useCallback(() => {
+    const budgetTier = BUDGET_TIERS.find(t => t.value === budget);
+    return {
+      origin: origin || 'India',
+      startDate, endDate, days, companions, transport,
+      budget: budgetTier?.desc || budget,
+      currency: '₹',
+    };
+  }, [origin, startDate, endDate, days, companions, transport, budget]);
+
   const handleSearch = useCallback(async (overrideQuery?: string) => {
-    setLoading(true); setError(''); setResult(null);
-    setUnlockedCards(new Set()); setPageMode('results');
+    setLoading(true); setError('');
+    setAllDestinations([]); setUnlockedCards(new Set());
+    setPageMode('results'); setShowVibeFilters(false);
+    const params = buildSearchParams();
+    setSearchParams(params);
     try {
-      const budgetTier = BUDGET_TIERS.find(t => t.value === budget);
       const res = await fetch('/api/recommend', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query: overrideQuery || notes || `Find me a perfect trip from ${origin}`,
-          structured: { origin: origin || 'India', startDate, endDate, days, companions, transport, budget: budgetTier?.desc || budget, currency: '₹' }
+          structured: params,
         }),
       });
       const data = await res.json();
       if (data.error) setError(data.error);
-      else setResult(data);
+      else { setAllDestinations(data.destinations || []); setInterpretation(data.interpretation || ''); }
     } catch { setError('Something went wrong. Please try again.'); }
     finally { setLoading(false); }
-  }, [origin, startDate, endDate, days, companions, transport, budget, notes]);
+  }, [origin, notes, buildSearchParams]);
+
+  const handleShowMore = useCallback(async () => {
+    setLoadingMore(true);
+    const excluded = allDestinations.map(d => d.name);
+    try {
+      const res = await fetch('/api/recommend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: notes || `More destinations from ${origin}`,
+          structured: searchParams,
+          vibes: selectedVibes,
+          exclude: excluded,
+        }),
+      });
+      const data = await res.json();
+      if (data.destinations) setAllDestinations(prev => [...prev, ...data.destinations]);
+    } catch { }
+    finally { setLoadingMore(false); setShowVibeFilters(false); }
+  }, [allDestinations, searchParams, selectedVibes, notes, origin]);
 
   const handleUnlock = (i: number) => {
     if (session) setUnlockedCards(prev => new Set([...prev, i]));
     else { setPendingUnlock(i); setShowAuth(true); }
   };
 
+  const toggleVibe = (v: string) => setSelectedVibes(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
+
   // ── Shared styles ──
-  const overlayCardStyle: React.CSSProperties = {
-    background: 'rgba(0,0,0,0.55)',
-    backdropFilter: 'blur(20px)',
-    WebkitBackdropFilter: 'blur(20px)',
-    borderRadius: '20px',
-    border: '1px solid rgba(255,255,255,0.12)',
-    padding: '32px',
-  };
+  const glassCard: React.CSSProperties = { background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.12)', padding: '32px' };
+  const labelStyle: React.CSSProperties = { fontFamily: 'var(--font-display)', fontSize: 'clamp(30px, 5vw, 52px)', fontWeight: 400, color: '#FFFFFF', lineHeight: 1.15, marginBottom: '28px', letterSpacing: '-0.01em', textShadow: '0 2px 20px rgba(0,0,0,0.5)' };
+  const inputStyle: React.CSSProperties = { background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '14px', padding: '16px 20px', fontSize: '16px', fontFamily: 'var(--font-body)', color: '#FFFFFF', outline: 'none', transition: 'border-color 0.2s, background 0.2s', backdropFilter: 'blur(10px)' };
+  const nextBtn: React.CSSProperties = { background: 'linear-gradient(135deg, #D4854A, #E8A46A)', color: '#fff', border: 'none', borderRadius: '12px', padding: '14px 28px', fontSize: '14px', fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--font-body)', boxShadow: '0 8px 24px rgba(212,133,74,0.35)', transition: 'all 0.2s', display: 'inline-flex', alignItems: 'center', gap: '8px' };
+  const backBtn: React.CSSProperties = { background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '12px', padding: '13px 20px', fontSize: '13px', color: '#fff', cursor: 'pointer', fontFamily: 'var(--font-body)', transition: 'all 0.2s' };
+  const skipBtn: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', color: 'rgba(255,255,255,0.5)', fontFamily: 'var(--font-body)', padding: '10px 16px' };
+  const optCard = (sel: boolean): React.CSSProperties => ({ padding: '20px 14px', borderRadius: '16px', cursor: 'pointer', border: 'none', borderTop: `2px solid ${sel ? '#D4854A' : 'transparent'}`, background: sel ? 'rgba(212,133,74,0.2)' : 'rgba(255,255,255,0.08)', backdropFilter: 'blur(12px)', color: sel ? '#F5F0E8' : 'rgba(255,255,255,0.75)', transition: 'all 0.2s', textAlign: 'center' as const, fontFamily: 'var(--font-body)', boxShadow: sel ? '0 0 0 1px rgba(212,133,74,0.4)' : 'none' });
 
-  const labelStyle: React.CSSProperties = {
-    fontFamily: 'var(--font-display)',
-    fontSize: 'clamp(30px, 5vw, 52px)',
-    fontWeight: 400,
-    color: '#FFFFFF',
-    lineHeight: 1.15,
-    marginBottom: '28px',
-    letterSpacing: '-0.01em',
-    textShadow: '0 2px 20px rgba(0,0,0,0.5)',
-  };
-
-  const inputStyle: React.CSSProperties = {
-    background: 'rgba(255,255,255,0.12)',
-    border: '1px solid rgba(255,255,255,0.2)',
-    borderRadius: '14px',
-    padding: '16px 20px',
-    fontSize: '16px',
-    fontFamily: 'var(--font-body)',
-    color: '#FFFFFF',
-    outline: 'none',
-    transition: 'border-color 0.2s, background 0.2s',
-    backdropFilter: 'blur(10px)',
-  };
-
-  const nextBtnStyle: React.CSSProperties = {
-    background: 'linear-gradient(135deg, #D4854A, #E8A46A)',
-    color: '#fff', border: 'none', borderRadius: '12px',
-    padding: '14px 28px', fontSize: '14px', fontWeight: 500,
-    cursor: 'pointer', fontFamily: 'var(--font-body)',
-    boxShadow: '0 8px 24px rgba(212,133,74,0.35)',
-    transition: 'all 0.2s',
-    display: 'inline-flex', alignItems: 'center', gap: '8px',
-  };
-
-  const backBtnStyle: React.CSSProperties = {
-    background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(10px)',
-    border: '1px solid rgba(255,255,255,0.15)', borderRadius: '12px',
-    padding: '13px 20px', fontSize: '13px', color: '#fff',
-    cursor: 'pointer', fontFamily: 'var(--font-body)', transition: 'all 0.2s',
-  };
-
-  const skipBtnStyle: React.CSSProperties = {
-    background: 'none', border: 'none', cursor: 'pointer',
-    fontSize: '13px', color: 'rgba(255,255,255,0.5)',
-    fontFamily: 'var(--font-body)', padding: '10px 16px', transition: 'color 0.2s',
-  };
-
-  const optionCardStyle = (selected: boolean): React.CSSProperties => ({
-    padding: '20px 14px', borderRadius: '16px', cursor: 'pointer', border: 'none',
-    borderTop: `2px solid ${selected ? '#D4854A' : 'transparent'}`,
-    background: selected ? 'rgba(212,133,74,0.2)' : 'rgba(255,255,255,0.08)',
-    backdropFilter: 'blur(12px)',
-    color: selected ? '#F5F0E8' : 'rgba(255,255,255,0.75)',
-    transition: 'all 0.2s', textAlign: 'center' as const,
-    fontFamily: 'var(--font-body)',
-    boxShadow: selected ? '0 0 0 1px rgba(212,133,74,0.4)' : 'none',
-  });
-
-  // ── NAV ──
-  const Nav = ({ showBack = false }: { showBack?: boolean }) => (
+  const Nav = ({ showBack = false }) => (
     <nav style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 28px', height: '58px' }}>
-      <button onClick={() => { setPageMode('wizard'); setResult(null); setWizardStep(0); }} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'none', border: 'none', cursor: 'pointer' }}>
+      <button onClick={() => { setPageMode('wizard'); setAllDestinations([]); setWizardStep(0); }} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'none', border: 'none', cursor: 'pointer' }}>
         <svg width="24" height="24" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" fill="rgba(122,158,130,0.2)" stroke="rgba(122,158,130,0.4)" strokeWidth="1"/><path d="M9 20 L16 10 L23 20" stroke="#7A9E82" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/><circle cx="16" cy="10" r="1.8" fill="#D4854A"/></svg>
         <span style={{ fontFamily: 'var(--font-display)', fontSize: '20px', fontWeight: 400, color: '#fff', textShadow: '0 1px 8px rgba(0,0,0,0.5)' }}>ZoveAI</span>
       </button>
       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-        {showBack && <button onClick={() => { setPageMode('wizard'); setResult(null); setWizardStep(0); }} style={{ ...backBtnStyle, padding: '7px 14px', fontSize: '12px' }}>← New search</button>}
+        {showBack && <button onClick={() => { setPageMode('wizard'); setAllDestinations([]); setWizardStep(0); }} style={{ ...backBtn, padding: '7px 14px', fontSize: '12px' }}>← New search</button>}
         {session ? (
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             {session.user?.image && <img src={session.user.image} alt="" style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1.5px solid #7A9E82' }} />}
-            <button onClick={() => signOut()} style={{ ...backBtnStyle, padding: '5px 12px', fontSize: '12px' }}>Sign out</button>
+            <button onClick={() => signOut()} style={{ ...backBtn, padding: '5px 12px', fontSize: '12px' }}>Sign out</button>
           </div>
         ) : (
           <>
-            <button onClick={() => setShowAuth(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', color: 'rgba(255,255,255,0.7)', fontFamily: 'var(--font-body)', textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>Sign in</button>
-            <button onClick={() => setShowAuth(true)} style={{ ...nextBtnStyle, padding: '8px 18px', fontSize: '13px', boxShadow: '0 4px 16px rgba(212,133,74,0.3)' }}>Get started</button>
+            <button onClick={() => setShowAuth(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', color: 'rgba(255,255,255,0.7)', fontFamily: 'var(--font-body)' }}>Sign in</button>
+            <button onClick={() => setShowAuth(true)} style={{ ...nextBtn, padding: '8px 18px', fontSize: '13px' }}>Get started</button>
           </>
         )}
       </div>
@@ -540,29 +649,74 @@ export default function Home() {
               <span key={i} style={{ padding: '4px 12px', background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '99px', fontSize: '12px', color: 'rgba(255,255,255,0.8)' }}>{tag}</span>
             ))}
           </div>
-          {result?.interpretation && (
-            <div style={{ ...overlayCardStyle, marginBottom: '24px', display: 'flex', gap: '14px', animation: 'fadeUp 0.5s ease' }}>
+
+          {interpretation && (
+            <div style={{ ...glassCard, marginBottom: '24px', display: 'flex', gap: '14px', animation: 'fadeUp 0.5s ease', padding: '18px 22px' }}>
               <div style={{ width: '34px', height: '34px', borderRadius: '50%', flexShrink: 0, background: 'linear-gradient(135deg, #D4854A, #E8A46A)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>✦</div>
               <div>
                 <div style={{ fontSize: '10px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>ZoveAI</div>
-                <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.7, fontStyle: 'italic' }}>"{result.interpretation}"</p>
+                <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.7, fontStyle: 'italic' }}>"{interpretation}"</p>
               </div>
             </div>
           )}
+
+          {/* Cards grid */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '22px' }}>
             {loading ? [0,1,2].map(i => (
               <div key={i} style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(20px)', borderRadius: '20px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', animation: `fadeUp 0.5s ease ${i * 0.1}s both` }}>
                 <div className="skeleton" style={{ height: '220px', borderRadius: 0 }} />
                 <div style={{ padding: '20px' }}>
                   {[['50%','12px'],['100%','11px'],['75%','11px']].map(([w,h],j) => <div key={j} className="skeleton" style={{ height: h, width: w, marginBottom: '8px' }} />)}
-                  <div className="skeleton" style={{ height: '70px', marginTop: '12px', borderRadius: '12px' }} />
+                  <div className="skeleton" style={{ height: '80px', marginTop: '12px', borderRadius: '12px' }} />
                 </div>
               </div>
-            )) : result?.destinations.map((dest, i) => (
-              <DestinationCard key={i} dest={dest} index={i} isUnlocked={!!session || unlockedCards.has(i)} onUnlock={() => handleUnlock(i)} />
+            )) : allDestinations.map((dest, i) => (
+              <DestinationCard key={`${dest.name}-${i}`} dest={dest} index={i} isUnlocked={!!session || unlockedCards.has(i)} onUnlock={() => handleUnlock(i)} />
+            ))}
+            {/* Loading more skeletons */}
+            {loadingMore && [0,1,2].map(i => (
+              <div key={`more-${i}`} style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(20px)', borderRadius: '20px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', animation: `fadeUp 0.5s ease ${i * 0.1}s both` }}>
+                <div className="skeleton" style={{ height: '220px', borderRadius: 0 }} />
+                <div style={{ padding: '20px' }}>
+                  {[['50%','12px'],['100%','11px'],['75%','11px']].map(([w,h],j) => <div key={j} className="skeleton" style={{ height: h, width: w, marginBottom: '8px' }} />)}
+                </div>
+              </div>
             ))}
           </div>
-          {error && <div style={{ ...overlayCardStyle, marginTop: '20px', color: '#E8A46A', fontSize: '14px' }}>{error}</div>}
+
+          {/* Show More section */}
+          {!loading && allDestinations.length > 0 && (
+            <div style={{ marginTop: '40px', textAlign: 'center' }}>
+              {!showVibeFilters ? (
+                <button onClick={() => setShowVibeFilters(true)}
+                  style={{ ...nextBtn, padding: '16px 36px', fontSize: '15px', boxShadow: '0 10px 36px rgba(212,133,74,0.3)' }}>
+                  ✦ Show me more destinations
+                </button>
+              ) : (
+                <div style={{ ...glassCard, textAlign: 'left', maxWidth: '700px', margin: '0 auto' }}>
+                  <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '22px', fontWeight: 400, color: '#fff', marginBottom: '6px' }}>What kind of place are you looking for?</h3>
+                  <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', marginBottom: '20px' }}>Pick one or more vibes and we'll find better matches.</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '24px' }}>
+                    {VIBE_FILTERS.map(v => (
+                      <button key={v.value} onClick={() => toggleVibe(v.value)}
+                        style={{ padding: '8px 16px', borderRadius: '99px', border: `1px solid ${selectedVibes.includes(v.value) ? '#D4854A' : 'rgba(255,255,255,0.15)'}`, background: selectedVibes.includes(v.value) ? 'rgba(212,133,74,0.2)' : 'rgba(255,255,255,0.06)', color: selectedVibes.includes(v.value) ? '#E8A46A' : 'rgba(255,255,255,0.7)', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: '13px', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>{v.icon}</span> {v.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button onClick={handleShowMore} disabled={loadingMore}
+                      style={{ ...nextBtn, opacity: loadingMore ? 0.7 : 1 }}>
+                      {loadingMore ? 'Finding...' : '✦ Find more destinations'}
+                    </button>
+                    <button onClick={() => { setShowVibeFilters(false); setSelectedVibes([]); }} style={skipBtn}>Cancel</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {error && <div style={{ ...glassCard, marginTop: '20px', color: '#E8A46A', fontSize: '14px' }}>{error}</div>}
         </div>
       </div>
     </>
@@ -585,7 +739,6 @@ export default function Home() {
       <div style={{ position: 'relative', zIndex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 24px 60px' }}>
         <div style={{ width: '100%', maxWidth: '620px' }}>
 
-          {/* ── STEP 0: Origin ── */}
           {wizardStep === 0 && (
             <div style={{ animation: 'slideUp 0.5s cubic-bezier(0.16,1,0.3,1)' }}>
               <div style={{ marginBottom: '32px' }}>
@@ -593,50 +746,45 @@ export default function Home() {
                   ✦ AI-Powered Travel Discovery
                 </div>
                 <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(46px, 9vw, 80px)', fontWeight: 300, lineHeight: 1.05, color: '#fff', letterSpacing: '-0.02em', marginBottom: '14px', textShadow: '0 4px 30px rgba(0,0,0,0.4)' }}>
-                  Where should<br /><em style={{ color: '#E8A46A', fontStyle: 'italic' }}>you go next?</em>
+                  Where should<br /><em style={{ color: '#E8A46A' }}>you go next?</em>
                 </h1>
                 <p style={{ fontSize: '17px', color: 'rgba(255,255,255,0.75)', lineHeight: 1.7, fontWeight: 300, textShadow: '0 1px 8px rgba(0,0,0,0.4)' }}>
                   Not a booking site. An AI that knows you<br />and gives <em>honest</em> recommendations.
                 </p>
               </div>
 
-              <div style={overlayCardStyle}>
+              <div style={glassCard}>
                 <p style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '10px' }}>Where are you travelling from?</p>
                 <div style={{ position: 'relative', marginBottom: '16px' }}>
-                  <input
-                    ref={originRef}
-                    type="text" placeholder="Delhi, Mumbai, Bangalore..."
-                    value={origin} onChange={e => setOrigin(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && origin.trim() && setWizardStep(1)}
+                  <input ref={originRef} type="text" placeholder="Delhi, Mumbai, Bangalore..." value={origin} onChange={e => setOrigin(e.target.value)} onKeyDown={e => e.key === 'Enter' && origin.trim() && setWizardStep(1)}
                     style={{ ...inputStyle, width: '100%', paddingRight: '50px' }}
                     onFocus={e => { e.target.style.borderColor = 'rgba(212,133,74,0.6)'; e.target.style.background = 'rgba(255,255,255,0.16)'; }}
                     onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.2)'; e.target.style.background = 'rgba(255,255,255,0.12)'; }}
                   />
                   <button onClick={detectLocation} disabled={locationLoading} title="Detect my location"
-                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', opacity: locationLoading ? 0.5 : 1, transition: 'opacity 0.2s' }}>
+                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', opacity: locationLoading ? 0.5 : 1 }}>
                     {locationLoading ? '⏳' : '📍'}
                   </button>
                 </div>
-                {origin && <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '12px' }}>📍 Detected: <strong style={{ color: '#E8A46A' }}>{origin}</strong> — <button onClick={() => setOrigin('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', fontSize: '12px', fontFamily: 'var(--font-body)' }}>change</button></p>}
+                {origin && <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '12px' }}>📍 <strong style={{ color: '#E8A46A' }}>{origin}</strong> — <button onClick={() => setOrigin('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', fontSize: '12px', fontFamily: 'var(--font-body)' }}>change</button></p>}
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                  <button onClick={() => origin.trim() && setWizardStep(1)} disabled={!origin.trim()} style={{ ...nextBtnStyle, opacity: origin.trim() ? 1 : 0.4 }}>Continue →</button>
-                  <button onClick={() => { setOrigin('India'); setWizardStep(1); }} style={skipBtnStyle}>Skip</button>
+                  <button onClick={() => origin.trim() && setWizardStep(1)} disabled={!origin.trim()} style={{ ...nextBtn, opacity: origin.trim() ? 1 : 0.4 }}>Continue →</button>
+                  <button onClick={() => { setOrigin('India'); setWizardStep(1); }} style={skipBtn}>Skip</button>
                 </div>
               </div>
 
-              {/* Surprise Me */}
               <div style={{ marginTop: '28px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '14px' }}>
                   <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.15)' }} />
-                  <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.08em', textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>or get inspired</span>
+                  <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>or get inspired</span>
                   <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.15)' }} />
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px' }}>
                   {SURPRISE_PROMPTS.map((p, i) => (
                     <button key={i} onClick={() => { if (!origin) setOrigin('India'); handleSearch(p.text); }}
                       style={{ padding: '12px 14px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(12px)', color: 'rgba(255,255,255,0.8)', cursor: 'pointer', fontFamily: 'var(--font-body)', transition: 'all 0.2s', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(212,133,74,0.15)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(212,133,74,0.3)'; (e.currentTarget as HTMLElement).style.color = '#fff'; }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.4)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.12)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.8)'; }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(212,133,74,0.15)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(212,133,74,0.3)'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.4)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.12)'; }}
                     >
                       <span style={{ fontSize: '18px', flexShrink: 0 }}>{p.icon}</span>
                       <span style={{ lineHeight: 1.4 }}>{p.text}</span>
@@ -647,16 +795,14 @@ export default function Home() {
             </div>
           )}
 
-          {/* ── STEP 1: Dates ── */}
           {wizardStep === 1 && (
-            <div style={{ animation: 'slideUp 0.5s cubic-bezier(0.16,1,0.3,1)', ...overlayCardStyle }}>
+            <div style={{ animation: 'slideUp 0.5s cubic-bezier(0.16,1,0.3,1)', ...glassCard }}>
               <p style={labelStyle}>When are you going?</p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '12px' }}>
                 {[{ label: 'Start date', val: startDate, set: setStartDate }, { label: 'End date', val: endDate, set: setEndDate }].map((d, i) => (
                   <div key={i}>
                     <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>{d.label}</div>
-                    <input type="date" value={d.val} onChange={e => d.set(e.target.value)}
-                      style={{ ...inputStyle, width: '100%', colorScheme: 'dark' }}
+                    <input type="date" value={d.val} onChange={e => d.set(e.target.value)} style={{ ...inputStyle, width: '100%', colorScheme: 'dark' }}
                       onFocus={e => { e.target.style.borderColor = 'rgba(212,133,74,0.6)'; e.target.style.background = 'rgba(255,255,255,0.16)'; }}
                       onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.2)'; e.target.style.background = 'rgba(255,255,255,0.12)'; }}
                     />
@@ -665,20 +811,19 @@ export default function Home() {
               </div>
               {days && <p style={{ fontSize: '14px', color: '#E8A46A', marginBottom: '20px', fontWeight: 500 }}>✦ {days} days</p>}
               <div style={{ display: 'flex', gap: '10px', marginTop: '24px', flexWrap: 'wrap' }}>
-                <button onClick={() => setWizardStep(0)} style={backBtnStyle}>← Back</button>
-                <button onClick={() => setWizardStep(2)} style={nextBtnStyle}>Continue →</button>
-                <button onClick={() => setWizardStep(2)} style={skipBtnStyle}>Skip</button>
+                <button onClick={() => setWizardStep(0)} style={backBtn}>← Back</button>
+                <button onClick={() => setWizardStep(2)} style={nextBtn}>Continue →</button>
+                <button onClick={() => setWizardStep(2)} style={skipBtn}>Skip</button>
               </div>
             </div>
           )}
 
-          {/* ── STEP 2: Companions ── */}
           {wizardStep === 2 && (
             <div style={{ animation: 'slideUp 0.5s cubic-bezier(0.16,1,0.3,1)' }}>
               <p style={{ ...labelStyle, textShadow: '0 2px 20px rgba(0,0,0,0.6)' }}>Who's coming with you?</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '28px' }}>
                 {COMPANIONS.map(c => (
-                  <button key={c.value} onClick={() => setCompanions(companions === c.value ? '' : c.value)} style={optionCardStyle(companions === c.value)}>
+                  <button key={c.value} onClick={() => setCompanions(companions === c.value ? '' : c.value)} style={optCard(companions === c.value)}>
                     <div style={{ fontSize: '30px', marginBottom: '8px' }}>{c.icon}</div>
                     <div style={{ fontWeight: 600, fontSize: '13px' }}>{c.label}</div>
                     <div style={{ fontSize: '11px', opacity: 0.6, marginTop: '3px' }}>{c.sub}</div>
@@ -686,19 +831,18 @@ export default function Home() {
                 ))}
               </div>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <button onClick={() => setWizardStep(1)} style={backBtnStyle}>← Back</button>
-                <button onClick={() => setWizardStep(3)} style={nextBtnStyle}>{companions ? 'Continue →' : 'Skip →'}</button>
+                <button onClick={() => setWizardStep(1)} style={backBtn}>← Back</button>
+                <button onClick={() => setWizardStep(3)} style={nextBtn}>{companions ? 'Continue →' : 'Skip →'}</button>
               </div>
             </div>
           )}
 
-          {/* ── STEP 3: Transport ── */}
           {wizardStep === 3 && (
             <div style={{ animation: 'slideUp 0.5s cubic-bezier(0.16,1,0.3,1)' }}>
               <p style={{ ...labelStyle, textShadow: '0 2px 20px rgba(0,0,0,0.6)' }}>How do you want to travel?</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '28px' }}>
                 {TRANSPORTS.map(t => (
-                  <button key={t.value} onClick={() => setTransport(transport === t.value ? '' : t.value)} style={optionCardStyle(transport === t.value)}>
+                  <button key={t.value} onClick={() => setTransport(transport === t.value ? '' : t.value)} style={optCard(transport === t.value)}>
                     <div style={{ fontSize: '30px', marginBottom: '8px' }}>{t.icon}</div>
                     <div style={{ fontWeight: 600, fontSize: '13px' }}>{t.label}</div>
                     <div style={{ fontSize: '11px', opacity: 0.6, marginTop: '3px' }}>{t.sub}</div>
@@ -706,19 +850,18 @@ export default function Home() {
                 ))}
               </div>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <button onClick={() => setWizardStep(2)} style={backBtnStyle}>← Back</button>
-                <button onClick={() => setWizardStep(4)} style={nextBtnStyle}>{transport ? 'Continue →' : 'Skip →'}</button>
+                <button onClick={() => setWizardStep(2)} style={backBtn}>← Back</button>
+                <button onClick={() => setWizardStep(4)} style={nextBtn}>{transport ? 'Continue →' : 'Skip →'}</button>
               </div>
             </div>
           )}
 
-          {/* ── STEP 4: Budget ── */}
           {wizardStep === 4 && (
             <div style={{ animation: 'slideUp 0.5s cubic-bezier(0.16,1,0.3,1)' }}>
               <p style={{ ...labelStyle, textShadow: '0 2px 20px rgba(0,0,0,0.6)' }}>What's your budget?</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', marginBottom: '28px' }}>
                 {BUDGET_TIERS.map(t => (
-                  <button key={t.value} onClick={() => setBudget(budget === t.value ? '' : t.value)} style={optionCardStyle(budget === t.value)}>
+                  <button key={t.value} onClick={() => setBudget(budget === t.value ? '' : t.value)} style={optCard(budget === t.value)}>
                     <div style={{ fontSize: '26px', marginBottom: '8px' }}>{t.emoji}</div>
                     <div style={{ fontWeight: 600, fontSize: '12px' }}>{t.label}</div>
                     <div style={{ fontSize: '10px', opacity: 0.6, marginTop: '3px' }}>{t.desc}</div>
@@ -726,22 +869,17 @@ export default function Home() {
                 ))}
               </div>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <button onClick={() => setWizardStep(3)} style={backBtnStyle}>← Back</button>
-                <button onClick={() => setWizardStep(5)} style={nextBtnStyle}>{budget ? 'Continue →' : 'Skip →'}</button>
+                <button onClick={() => setWizardStep(3)} style={backBtn}>← Back</button>
+                <button onClick={() => setWizardStep(5)} style={nextBtn}>{budget ? 'Continue →' : 'Skip →'}</button>
               </div>
             </div>
           )}
 
-          {/* ── STEP 5: Notes + Search ── */}
           {wizardStep === 5 && (
-            <div style={{ animation: 'slideUp 0.5s cubic-bezier(0.16,1,0.3,1)', ...overlayCardStyle }}>
+            <div style={{ animation: 'slideUp 0.5s cubic-bezier(0.16,1,0.3,1)', ...glassCard }}>
               <p style={{ ...labelStyle, fontSize: 'clamp(24px, 4vw, 40px)' }}>Anything else we should know?</p>
-              <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.65)', marginBottom: '18px', lineHeight: 1.6 }}>
-                Special needs, places to avoid, vibes you want — or just hit search.
-              </p>
-              <textarea
-                placeholder="e.g. My parents can't trek. Love local food. Avoid crowded tourist spots. Need good roads for the bike..."
-                value={notes} onChange={e => setNotes(e.target.value)} rows={3}
+              <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.65)', marginBottom: '18px', lineHeight: 1.6 }}>Special needs, places to avoid, vibes you want — or just hit search.</p>
+              <textarea placeholder="e.g. My parents can't trek. Love local food. Avoid crowded tourist spots. Need good roads for the bike..." value={notes} onChange={e => setNotes(e.target.value)} rows={3}
                 style={{ ...inputStyle, width: '100%', resize: 'none', lineHeight: 1.6, marginBottom: '20px' }}
                 onFocus={e => { e.target.style.borderColor = 'rgba(212,133,74,0.6)'; e.target.style.background = 'rgba(255,255,255,0.16)'; }}
                 onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.2)'; e.target.style.background = 'rgba(255,255,255,0.12)'; }}
@@ -752,8 +890,8 @@ export default function Home() {
                 ))}
               </div>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <button onClick={() => setWizardStep(4)} style={backBtnStyle}>← Back</button>
-                <button onClick={() => handleSearch()} style={{ ...nextBtnStyle, padding: '16px 36px', fontSize: '15px', boxShadow: '0 10px 36px rgba(212,133,74,0.35)' }}>
+                <button onClick={() => setWizardStep(4)} style={backBtn}>← Back</button>
+                <button onClick={() => handleSearch()} style={{ ...nextBtn, padding: '16px 36px', fontSize: '15px', boxShadow: '0 10px 36px rgba(212,133,74,0.35)' }}>
                   ✦ Find my destinations
                 </button>
               </div>
@@ -761,8 +899,7 @@ export default function Home() {
           )}
         </div>
       </div>
-
-      <div style={{ position: 'fixed', bottom: '18px', left: '50%', transform: 'translateX(-50%)', zIndex: 10, fontSize: '11px', color: 'rgba(255,255,255,0.4)', textAlign: 'center', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
+      <div style={{ position: 'fixed', bottom: '18px', left: '50%', transform: 'translateX(-50%)', zIndex: 10, fontSize: '11px', color: 'rgba(255,255,255,0.4)', textAlign: 'center' }}>
         <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginRight: '6px' }}>ZoveAI</span>· Free to use · No booking fees
       </div>
     </>
