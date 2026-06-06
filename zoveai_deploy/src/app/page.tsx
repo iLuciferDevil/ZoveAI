@@ -316,7 +316,7 @@ function DestinationCard({ dest, index, isUnlocked, onUnlock }: {
 }
 
 // ── Auth Modal with Firebase Phone OTP ─────────────────────────────────────
-function AuthModal({ onClose, pendingUnlock }: { onClose: () => void; pendingUnlock: number | null }) {
+function AuthModal({ onClose, pendingUnlock, onGoogleSignIn }: { onClose: () => void; pendingUnlock: number | null; onGoogleSignIn: () => void }) {
   const [tab, setTab] = useState<'google' | 'email' | 'phone'>('google');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -379,11 +379,7 @@ function AuthModal({ onClose, pendingUnlock }: { onClose: () => void; pendingUnl
         </div>
 
         {tab === 'google' && (
-          <button onClick={() => { 
-            try { sessionStorage.setItem('zove_pending_unlock', String(pendingUnlock ?? '')); } catch {}
-            setLoading(true); 
-            signIn('google', { callbackUrl: window.location.href }); 
-          }} disabled={loading}
+          <button onClick={() => { onGoogleSignIn(); setLoading(true); signIn('google', { callbackUrl: window.location.href }); }} disabled={loading}
             style={{ width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', fontSize: '14px', fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--font-body)', color: '#F5F0E8', transition: 'all 0.2s' }}
             onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.12)'}
             onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
@@ -549,17 +545,32 @@ export default function Home() {
     setTimeout(() => originRef.current?.focus(), 600);
   }, []);
 
-  // Restore pending unlock after Google auth redirect
+  // Restore full state after Google auth redirect
   useEffect(() => {
     if (session) {
       try {
-        const pending = sessionStorage.getItem('zove_pending_unlock');
-        if (pending && pending !== '') {
-          const idx = parseInt(pending);
-          if (!isNaN(idx)) {
-            setUnlockedCards(prev => new Set([...prev, idx]));
+        const saved = sessionStorage.getItem('zove_restore');
+        if (saved) {
+          const s = JSON.parse(saved);
+          if (s.origin) setOrigin(s.origin);
+          if (s.startDate) setStartDate(s.startDate);
+          if (s.endDate) setEndDate(s.endDate);
+          if (s.days) setDays(s.days);
+          if (s.companions) setCompanions(s.companions);
+          if (s.transport) setTransport(s.transport);
+          if (s.budget) setBudget(s.budget);
+          if (s.notes) setNotes(s.notes);
+          if (s.wizardStep !== undefined) setWizardStep(s.wizardStep);
+          if (s.pageMode) setPageMode(s.pageMode);
+          if (s.interpretation) setInterpretation(s.interpretation);
+          if (s.allDestinations?.length) {
+            setAllDestinations(s.allDestinations);
+            // Unlock the card they were trying to unlock
+            if (s.pendingUnlock !== null && s.pendingUnlock !== undefined) {
+              setUnlockedCards(new Set([s.pendingUnlock]));
+            }
           }
-          sessionStorage.removeItem('zove_pending_unlock');
+          sessionStorage.removeItem('zove_restore');
         }
       } catch {}
     }
@@ -617,6 +628,15 @@ export default function Home() {
     finally { setLoadingMore(false); setShowVibeFilters(false); }
   }, [allDestinations, searchParams, selectedVibes, notes, origin]);
 
+  const saveStateForAuth = useCallback(() => {
+    try {
+      sessionStorage.setItem('zove_restore', JSON.stringify({
+        origin, startDate, endDate, days, companions, transport, budget, notes,
+        wizardStep, pageMode, pendingUnlock, allDestinations, interpretation,
+      }));
+    } catch {}
+  }, [origin, startDate, endDate, days, companions, transport, budget, notes, wizardStep, pageMode, pendingUnlock, allDestinations, interpretation]);
+
   const handleUnlock = (i: number) => {
     if (session) setUnlockedCards(prev => new Set([...prev, i]));
     else { setPendingUnlock(i); setShowAuth(true); }
@@ -659,7 +679,7 @@ export default function Home() {
   // ── RESULTS ──
   if (pageMode === 'results') return (
     <>
-      {showAuth && <AuthModal onClose={() => setShowAuth(false)} pendingUnlock={pendingUnlock} />}
+      {showAuth && <AuthModal onClose={() => setShowAuth(false)} pendingUnlock={pendingUnlock} onGoogleSignIn={saveStateForAuth} />}
       <TravelBackground currentBg={currentBg} />
       <div style={{ position: 'relative', zIndex: 1, minHeight: '100vh' }}>
         <Nav showBack />
@@ -745,7 +765,7 @@ export default function Home() {
   // ── WIZARD ──
   return (
     <>
-      {showAuth && <AuthModal onClose={() => setShowAuth(false)} pendingUnlock={pendingUnlock} />}
+      {showAuth && <AuthModal onClose={() => setShowAuth(false)} pendingUnlock={pendingUnlock} onGoogleSignIn={saveStateForAuth} />}
       <TravelBackground currentBg={currentBg} />
       <Nav />
 
