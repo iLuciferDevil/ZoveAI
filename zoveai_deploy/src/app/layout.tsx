@@ -6,6 +6,13 @@ export const metadata: Metadata = {
   title: "ZoveAI — Where should I go next?",
   description: "AI-powered travel discovery. Tell ZoveAI how you travel — get honest, personalized destination recommendations with routes, costs, and booking links.",
   keywords: "travel planning, AI travel, destination recommendations, trip planner, road trip, India travel",
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.png', type: 'image/png' },
+    ],
+    apple: '/favicon.png',
+  },
   openGraph: {
     title: "ZoveAI — Where should I go next?",
     description: "Not a booking site. Not a search engine. Your AI travel companion that actually knows you.",

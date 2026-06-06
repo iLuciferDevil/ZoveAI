@@ -316,7 +316,7 @@ function DestinationCard({ dest, index, isUnlocked, onUnlock }: {
 }
 
 // ── Auth Modal with Firebase Phone OTP ─────────────────────────────────────
-function AuthModal({ onClose }: { onClose: () => void }) {
+function AuthModal({ onClose, pendingUnlock }: { onClose: () => void; pendingUnlock: number | null }) {
   const [tab, setTab] = useState<'google' | 'email' | 'phone'>('google');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -379,7 +379,11 @@ function AuthModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {tab === 'google' && (
-          <button onClick={() => { setLoading(true); signIn('google', { callbackUrl: '/' }); }} disabled={loading}
+          <button onClick={() => { 
+            try { sessionStorage.setItem('zove_pending_unlock', String(pendingUnlock ?? '')); } catch {}
+            setLoading(true); 
+            signIn('google', { callbackUrl: window.location.href }); 
+          }} disabled={loading}
             style={{ width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', fontSize: '14px', fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--font-body)', color: '#F5F0E8', transition: 'all 0.2s' }}
             onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.12)'}
             onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
@@ -431,7 +435,7 @@ function AuthModal({ onClose }: { onClose: () => void }) {
                   style={{ width: '100%', padding: '13px', borderRadius: '12px', background: phone.length === 10 && !loading ? 'linear-gradient(135deg, #D4854A, #E8A46A)' : 'rgba(255,255,255,0.08)', color: '#fff', border: 'none', cursor: phone.length === 10 && !loading ? 'pointer' : 'not-allowed', fontSize: '14px', fontWeight: 500, fontFamily: 'var(--font-body)' }}>
                   {loading ? 'Sending...' : 'Send OTP'}
                 </button>
-                <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', textAlign: 'center', marginTop: '10px' }}>India numbers only · 10 SMS/day limit on free tier</p>
+                <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', textAlign: 'center', marginTop: '10px' }}>India numbers only · OTP valid for 10 minutes</p>
               </>
             ) : (
               <div>
@@ -545,6 +549,22 @@ export default function Home() {
     setTimeout(() => originRef.current?.focus(), 600);
   }, []);
 
+  // Restore pending unlock after Google auth redirect
+  useEffect(() => {
+    if (session) {
+      try {
+        const pending = sessionStorage.getItem('zove_pending_unlock');
+        if (pending && pending !== '') {
+          const idx = parseInt(pending);
+          if (!isNaN(idx)) {
+            setUnlockedCards(prev => new Set([...prev, idx]));
+          }
+          sessionStorage.removeItem('zove_pending_unlock');
+        }
+      } catch {}
+    }
+  }, [session]);
+
   const buildSearchParams = useCallback(() => {
     const budgetTier = BUDGET_TIERS.find(t => t.value === budget);
     return {
@@ -639,7 +659,7 @@ export default function Home() {
   // ── RESULTS ──
   if (pageMode === 'results') return (
     <>
-      {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
+      {showAuth && <AuthModal onClose={() => setShowAuth(false)} pendingUnlock={pendingUnlock} />}
       <TravelBackground currentBg={currentBg} />
       <div style={{ position: 'relative', zIndex: 1, minHeight: '100vh' }}>
         <Nav showBack />
@@ -725,7 +745,7 @@ export default function Home() {
   // ── WIZARD ──
   return (
     <>
-      {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
+      {showAuth && <AuthModal onClose={() => setShowAuth(false)} pendingUnlock={pendingUnlock} />}
       <TravelBackground currentBg={currentBg} />
       <Nav />
 
