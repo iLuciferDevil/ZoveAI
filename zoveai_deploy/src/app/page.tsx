@@ -323,6 +323,21 @@ function AuthModal({ onClose, pendingUnlock, onGoogleSignIn }: { onClose: () => 
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+
+  const sendMagicLink = async () => {
+    if (!email || loading) return;
+    setLoading(true);
+    try {
+      const res = await fetch('/api/send-magic-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      if (res.ok) setSent(true);
+      else setError('Failed to send email. Try again.');
+    } catch { setError('Failed to send email. Try again.'); }
+    finally { setLoading(false); }
+  };
   const [confirmResult, setConfirmResult] = useState<ConfirmationResult | null>(null);
   const [error, setError] = useState('');
   const recaptchaRef = useRef<HTMLDivElement>(null);
@@ -394,13 +409,14 @@ function AuthModal({ onClose, pendingUnlock, onGoogleSignIn }: { onClose: () => 
             {!sent ? (
               <>
                 <input type="email" placeholder="your@email.com" value={email} onChange={e => setEmail(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && email && sendMagicLink()}
                   style={{ width: '100%', padding: '13px 16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.07)', fontSize: '14px', fontFamily: 'var(--font-body)', color: '#F5F0E8', outline: 'none', marginBottom: '10px' }}
                   onFocus={e => e.target.style.borderColor = 'rgba(212,133,74,0.5)'}
                   onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.15)'}
                 />
-                <button onClick={() => email && setSent(true)} disabled={!email}
-                  style={{ width: '100%', padding: '13px', borderRadius: '12px', background: email ? 'linear-gradient(135deg, #D4854A, #E8A46A)' : 'rgba(255,255,255,0.08)', color: '#fff', border: 'none', cursor: email ? 'pointer' : 'not-allowed', fontSize: '14px', fontWeight: 500, fontFamily: 'var(--font-body)' }}>
-                  Send magic link
+                <button onClick={sendMagicLink} disabled={!email || loading}
+                  style={{ width: '100%', padding: '13px', borderRadius: '12px', background: email && !loading ? 'linear-gradient(135deg, #D4854A, #E8A46A)' : 'rgba(255,255,255,0.08)', color: '#fff', border: 'none', cursor: email ? 'pointer' : 'not-allowed', fontSize: '14px', fontWeight: 500, fontFamily: 'var(--font-body)' }}>
+                  {loading ? 'Sending...' : 'Send magic link'}
                 </button>
               </>
             ) : (
@@ -664,6 +680,7 @@ export default function Home() {
         {session ? (
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             {session.user?.image && <img src={session.user.image} alt="" style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1.5px solid #7A9E82' }} />}
+            <a href="/dashboard" style={{ ...backBtn, padding: '5px 12px', fontSize: '12px', textDecoration: 'none', display: 'inline-block' }}>My profile</a>
             <button onClick={() => signOut()} style={{ ...backBtn, padding: '5px 12px', fontSize: '12px' }}>Sign out</button>
           </div>
         ) : (
@@ -940,7 +957,7 @@ export default function Home() {
         </div>
       </div>
       <div style={{ position: 'fixed', bottom: '18px', left: '50%', transform: 'translateX(-50%)', zIndex: 10, fontSize: '11px', color: 'rgba(255,255,255,0.4)', textAlign: 'center' }}>
-        <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginRight: '6px' }}>ZoveAI</span>· Free to use · No booking fees
+        <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginRight: '6px' }}>ZoveAI</span>· Free to use · <a href="/privacy" style={{ color: 'rgba(255,255,255,0.4)', textDecoration: 'none' }}>Privacy</a> · <a href="/terms" style={{ color: 'rgba(255,255,255,0.4)', textDecoration: 'none' }}>Terms</a>
       </div>
     </>
   );
