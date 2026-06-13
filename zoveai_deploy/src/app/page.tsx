@@ -52,7 +52,7 @@ const TRANSPORTS = [
   { value: 'train', icon: '🚆', label: 'Train', sub: 'Rail journey' },
   { value: 'flight', icon: '✈', label: 'Flight', sub: 'Fly there' },
   { value: 'bus', icon: '🚌', label: 'Bus', sub: 'Budget travel' },
-  { value: 'any', icon: '🗺', label: 'Best way', sub: 'AI decides' },
+  { value: 'any', icon: '🗺', label: 'Best way', sub: 'We decide' },
 ];
 const BUDGET_TIERS = [
   { value: 'budget', emoji: '🎒', label: 'Budget', desc: 'Under ₹2K/day' },
@@ -62,14 +62,14 @@ const BUDGET_TIERS = [
   { value: 'ultraluxury', emoji: '👑', label: 'Ultra Luxury', desc: '₹25K+/day' },
 ];
 const SURPRISE_PROMPTS = [
-  { icon: '🏔', text: 'Take me somewhere cold and quiet' },
-  { icon: '🌊', text: 'I need to hear the ocean' },
-  { icon: '🛕', text: 'Something spiritual and ancient' },
-  { icon: '🌲', text: 'Deep forest, no phone signal' },
-  { icon: '🎒', text: 'Offbeat — where tourists don\'t go' },
-  { icon: '🍜', text: 'A food journey I\'ll never forget' },
-  { icon: '🏍', text: 'Epic roads for a bike trip' },
-  { icon: '⭐', text: 'Surprise me completely' },
+  { icon: '🏔', text: 'Take me somewhere cold and quiet', bg: 0 },
+  { icon: '🌊', text: 'I need to hear the ocean', bg: 3 },
+  { icon: '🛕', text: 'Something spiritual and ancient', bg: 5 },
+  { icon: '🌲', text: 'Deep forest, no phone signal', bg: 4 },
+  { icon: '🎒', text: 'Offbeat — where tourists don\'t go', bg: 6 },
+  { icon: '🍜', text: 'A food journey I\'ll never forget', bg: 7 },
+  { icon: '🏍', text: 'Epic roads for a bike trip', bg: 2 },
+  { icon: '⭐', text: 'Surprise me completely', bg: 1 },
 ];
 const VIBE_FILTERS = [
   { value: 'mountains', icon: '🏔', label: 'Mountains' },
@@ -394,7 +394,7 @@ function AuthModal({ onClose, pendingUnlock, onGoogleSignIn }: { onClose: () => 
         </div>
 
         {tab === 'google' && (
-          <button onClick={() => { onGoogleSignIn(); setLoading(true); signIn('google', { callbackUrl: window.location.href }); }} disabled={loading}
+          <button onClick={() => { onGoogleSignIn(); setLoading(true); signIn('google', { callbackUrl: window.location.origin }); }} disabled={loading}
             style={{ width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', fontSize: '14px', fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--font-body)', color: '#F5F0E8', transition: 'all 0.2s' }}
             onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.12)'}
             onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
@@ -477,11 +477,12 @@ function AuthModal({ onClose, pendingUnlock, onGoogleSignIn }: { onClose: () => 
 }
 
 // ── Background ──────────────────────────────────────────────────────────────
-function TravelBackground({ currentBg }: { currentBg: number }) {
+function TravelBackground({ currentBg, hoverBg }: { currentBg: number; hoverBg?: number | null }) {
+  const activeBg = hoverBg !== null && hoverBg !== undefined ? hoverBg : currentBg;
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 0 }}>
       {BG_IMAGES.map((url, i) => (
-        <div key={i} style={{ position: 'absolute', inset: 0, backgroundImage: `url(${url})`, backgroundSize: 'cover', backgroundPosition: 'center', opacity: i === currentBg ? 1 : 0, transition: 'opacity 2s ease' }} />
+        <div key={i} style={{ position: 'absolute', inset: 0, backgroundImage: `url(${url})`, backgroundSize: 'cover', backgroundPosition: 'center', opacity: i === activeBg ? 1 : 0, transition: 'opacity 0.8s ease' }} />
       ))}
       <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.55) 50%, rgba(0,0,0,0.65) 100%)' }} />
       <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 80% 80% at 50% 50%, transparent 40%, rgba(0,0,0,0.4) 100%)' }} />
@@ -494,6 +495,7 @@ export default function Home() {
   const { data: session } = useSession();
   const [showAuth, setShowAuth] = useState(false);
   const [currentBg, setCurrentBg] = useState(0);
+  const [hoverBg, setHoverBg] = useState<number | null>(null);
   const [wizardStep, setWizardStep] = useState(0);
   const [pageMode, setPageMode] = useState<'wizard' | 'results'>('wizard');
 
@@ -626,7 +628,9 @@ export default function Home() {
 
   const handleShowMore = useCallback(async () => {
     setLoadingMore(true);
-    const excluded = allDestinations.map(d => d.name);
+    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+    const excludedNames = allDestinations.map(d => d.name);
+    const excludedSet = new Set(excludedNames.map(normalize));
     try {
       const res = await fetch('/api/recommend', {
         method: 'POST',
@@ -635,11 +639,15 @@ export default function Home() {
           query: notes || `More destinations from ${origin}`,
           structured: searchParams,
           vibes: selectedVibes,
-          exclude: excluded,
+          exclude: excludedNames,
         }),
       });
       const data = await res.json();
-      if (data.destinations) setAllDestinations(prev => [...prev, ...data.destinations]);
+      if (data.destinations) {
+        // Filter out any duplicates the AI might still return (case/spacing-insensitive)
+        const fresh = (data.destinations as Destination[]).filter(d => !excludedSet.has(normalize(d.name)));
+        setAllDestinations(prev => [...prev, ...fresh]);
+      }
     } catch { }
     finally { setLoadingMore(false); setShowVibeFilters(false); }
   }, [allDestinations, searchParams, selectedVibes, notes, origin]);
@@ -669,12 +677,19 @@ export default function Home() {
   const skipBtn: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', color: 'rgba(255,255,255,0.5)', fontFamily: 'var(--font-body)', padding: '10px 16px' };
   const optCard = (sel: boolean): React.CSSProperties => ({ padding: '20px 14px', borderRadius: '16px', cursor: 'pointer', border: 'none', borderTop: `2px solid ${sel ? '#D4854A' : 'transparent'}`, background: sel ? 'rgba(212,133,74,0.2)' : 'rgba(255,255,255,0.08)', backdropFilter: 'blur(12px)', color: sel ? '#F5F0E8' : 'rgba(255,255,255,0.75)', transition: 'all 0.2s', textAlign: 'center' as const, fontFamily: 'var(--font-body)', boxShadow: sel ? '0 0 0 1px rgba(212,133,74,0.4)' : 'none' });
 
-  const Nav = ({ showBack = false }) => (
-    <nav style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 28px', height: '58px' }}>
+  const Nav = ({ showBack = false, showDots = false }: { showBack?: boolean; showDots?: boolean }) => (
+    <nav style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 28px', height: '58px', background: 'rgba(13,15,14,0.55)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)' }}>
       <button onClick={() => { setPageMode('wizard'); setAllDestinations([]); setWizardStep(0); }} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'none', border: 'none', cursor: 'pointer' }}>
         <svg width="24" height="24" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" fill="rgba(122,158,130,0.2)" stroke="rgba(122,158,130,0.4)" strokeWidth="1"/><path d="M9 20 L16 10 L23 20" stroke="#7A9E82" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/><circle cx="16" cy="10" r="1.8" fill="#D4854A"/></svg>
         <span style={{ fontFamily: 'var(--font-display)', fontSize: '20px', fontWeight: 400, color: '#fff', textShadow: '0 1px 8px rgba(0,0,0,0.5)' }}>ZoveAI</span>
       </button>
+      {showDots && (
+        <div style={{ display: 'flex', gap: '6px', position: 'absolute', left: '50%', transform: 'translateX(-50%)' }}>
+          {[0,1,2,3,4,5].map(i => (
+            <div key={i} style={{ width: i === wizardStep ? '22px' : '6px', height: '6px', borderRadius: '99px', background: i === wizardStep ? '#D4854A' : i < wizardStep ? 'rgba(212,133,74,0.5)' : 'rgba(255,255,255,0.2)', transition: 'all 0.4s cubic-bezier(0.16,1,0.3,1)' }} />
+          ))}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
         {showBack && <button onClick={() => { setPageMode('wizard'); setAllDestinations([]); setWizardStep(0); }} style={{ ...backBtn, padding: '7px 14px', fontSize: '12px' }}>← New search</button>}
         {session ? (
@@ -761,7 +776,7 @@ export default function Home() {
                       </button>
                     ))}
                   </div>
-                  <div style={{ display: 'flex', gap: '10px' }}>
+                  <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
                     <button onClick={handleShowMore} disabled={loadingMore}
                       style={{ ...nextBtn, opacity: loadingMore ? 0.7 : 1 }}>
                       {loadingMore ? 'Finding...' : '✦ Find more destinations'}
@@ -783,15 +798,8 @@ export default function Home() {
   return (
     <>
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} pendingUnlock={pendingUnlock} onGoogleSignIn={saveStateForAuth} />}
-      <TravelBackground currentBg={currentBg} />
-      <Nav />
-
-      {/* Progress dots */}
-      <div style={{ position: 'fixed', top: '68px', left: '50%', transform: 'translateX(-50%)', zIndex: 100, display: 'flex', gap: '6px' }}>
-        {[0,1,2,3,4,5].map(i => (
-          <div key={i} style={{ width: i === wizardStep ? '22px' : '6px', height: '6px', borderRadius: '99px', background: i === wizardStep ? '#D4854A' : i < wizardStep ? 'rgba(212,133,74,0.5)' : 'rgba(255,255,255,0.2)', transition: 'all 0.4s cubic-bezier(0.16,1,0.3,1)' }} />
-        ))}
-      </div>
+      <TravelBackground currentBg={currentBg} hoverBg={hoverBg} />
+      <Nav showDots />
 
       <div style={{ position: 'relative', zIndex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 24px 60px' }}>
         <div style={{ width: '100%', maxWidth: '620px' }}>
@@ -800,13 +808,13 @@ export default function Home() {
             <div style={{ animation: 'slideUp 0.5s cubic-bezier(0.16,1,0.3,1)' }}>
               <div style={{ marginBottom: '32px' }}>
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 14px', borderRadius: '99px', background: 'rgba(122,158,130,0.2)', border: '1px solid rgba(122,158,130,0.3)', fontSize: '11px', fontWeight: 500, color: '#7A9E82', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '20px', backdropFilter: 'blur(10px)' }}>
-                  ✦ AI-Powered Travel Discovery
+                  ✦ Travel Discovery, Reimagined
                 </div>
                 <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(46px, 9vw, 80px)', fontWeight: 300, lineHeight: 1.05, color: '#fff', letterSpacing: '-0.02em', marginBottom: '14px', textShadow: '0 4px 30px rgba(0,0,0,0.4)' }}>
                   Where should<br /><em style={{ color: '#E8A46A' }}>you go next?</em>
                 </h1>
                 <p style={{ fontSize: '17px', color: 'rgba(255,255,255,0.75)', lineHeight: 1.7, fontWeight: 300, textShadow: '0 1px 8px rgba(0,0,0,0.4)' }}>
-                  Not a booking site. An AI that knows you<br />and gives <em>honest</em> recommendations.
+                  Not a booking site. A companion that knows you<br />and gives <em>honest</em> recommendations.
                 </p>
               </div>
 
@@ -840,8 +848,8 @@ export default function Home() {
                   {SURPRISE_PROMPTS.map((p, i) => (
                     <button key={i} onClick={() => { if (!origin) setOrigin('India'); handleSearch(p.text); }}
                       style={{ padding: '12px 14px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(12px)', color: 'rgba(255,255,255,0.8)', cursor: 'pointer', fontFamily: 'var(--font-body)', transition: 'all 0.2s', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(212,133,74,0.15)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(212,133,74,0.3)'; }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.4)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.12)'; }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(212,133,74,0.15)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(212,133,74,0.3)'; setHoverBg(p.bg); }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.4)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.12)'; setHoverBg(null); }}
                     >
                       <span style={{ fontSize: '18px', flexShrink: 0 }}>{p.icon}</span>
                       <span style={{ lineHeight: 1.4 }}>{p.text}</span>
@@ -856,10 +864,17 @@ export default function Home() {
             <div style={{ animation: 'slideUp 0.5s cubic-bezier(0.16,1,0.3,1)', ...glassCard }}>
               <p style={labelStyle}>When are you going?</p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '12px' }}>
-                {[{ label: 'Start date', val: startDate, set: setStartDate }, { label: 'End date', val: endDate, set: setEndDate }].map((d, i) => (
+                {[
+                  { label: 'Start date', val: startDate, set: setStartDate, min: new Date().toISOString().split('T')[0] },
+                  { label: 'End date', val: endDate, set: setEndDate, min: startDate || new Date().toISOString().split('T')[0] },
+                ].map((d, i) => (
                   <div key={i}>
                     <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>{d.label}</div>
-                    <input type="date" value={d.val} onChange={e => d.set(e.target.value)} style={{ ...inputStyle, width: '100%', colorScheme: 'dark' }}
+                    <input type="date" value={d.val} min={d.min} onChange={e => {
+                        const val = e.target.value;
+                        if (i === 0 && endDate && val > endDate) setEndDate(''); // reset end date if now invalid
+                        d.set(val);
+                      }} style={{ ...inputStyle, width: '100%', colorScheme: 'dark' }}
                       onFocus={e => { e.target.style.borderColor = 'rgba(212,133,74,0.6)'; e.target.style.background = 'rgba(255,255,255,0.16)'; }}
                       onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.2)'; e.target.style.background = 'rgba(255,255,255,0.12)'; }}
                     />
